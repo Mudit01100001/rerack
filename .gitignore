@@ -1,0 +1,30 @@
+# Xcode project file — generated from project.yml by XcodeGen.
+# Regenerate with `xcodegen generate` after cloning or after any project.yml
+# change. Committing the raw .xcodeproj is the single biggest cause of
+# needless merge conflicts in iOS repos (it's an internal, auto-managed
+# format, not something meant to be hand-diffed) — project.yml is the real
+# source of truth and is the only one tracked here.
+/Rerack.xcodeproj/
+
+## Build artifacts
+build/
+DerivedData/
+*.o
+*.LinkFileList
+
+## Xcode per-user state (never shared, machine-specific)
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+
+## Swift Package Manager
+.build/
+.swiftpm/
+
+## Simulator / misc
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+## macOS
+.DS_Store
