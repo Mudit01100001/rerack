@@ -1,15 +1,26 @@
 import SwiftUI
 
-/// PRD §7.2/§7.3. `existingSet == nil` means this row is still a ghost —
-/// pure view state, nothing in the database yet. Ticking a ghost row commits
-/// it; ticking an existing one is the un-tick path (revert to editable).
+/// PRD §7.2/§7.3/§7.9. `existingSet == nil` means this row is still a ghost
+/// (or, for a drop row, an uncommitted pending drop) — pure view state,
+/// nothing in the database yet. Ticking commits it; ticking an existing row
+/// is the un-tick path (revert to editable).
 struct SetRowView: View {
     let orderIndex: Int
     let existingSet: SetLog?
     let ghost: GhostSet?
+    /// §7.9: renders indented with a "D" label and connector instead of the
+    /// numeric set index.
+    var isDrop: Bool = false
+    /// §7.9: the −20%-of-parent pre-fill for an uncommitted drop row. Plays
+    /// the same "grey until edited or ticked" role `ghost` plays for a
+    /// normal row — `showsAsGhost` below treats the two identically.
+    var dropPrefillWeightKg: Double? = nil
     let onComplete: (_ weightKg: Double, _ reps: Int) -> Void
     let onUncomplete: () -> Void
     let onDeleteExisting: () -> Void
+    /// nil hides the "+ Drop" swipe action — callers only pass a closure for
+    /// a completed row (PRD §15: blocked on an incomplete parent).
+    var onAddDrop: (() -> Void)? = nil
 
     @State private var weightText = ""
     @State private var repsText = ""
@@ -19,14 +30,30 @@ struct SetRowView: View {
 
     /// PRD §4 Principle 5: grey means suggestion, black means fact — with no
     /// exceptions. This is the one flag that decides which it is.
-    private var showsAsGhost: Bool { !isCompleted && !hasEdited && ghost != nil }
+    private var showsAsGhost: Bool { !isCompleted && !hasEdited && (ghost != nil || dropPrefillWeightKg != nil) }
 
     var body: some View {
         HStack(spacing: 8) {
-            Text("\(orderIndex + 1)")
-                .font(.subheadline)
-                .frame(width: 20)
-                .foregroundStyle(.secondary)
+            // §7.9: drop rows are indented and tethered to the parent with a
+            // small connector glyph, marked "D" instead of a set number.
+            Group {
+                if isDrop {
+                    Image(systemName: "arrow.turn.down.right")
+                        .font(.caption2)
+                } else {
+                    Text("\(orderIndex + 1)")
+                        .font(.subheadline)
+                }
+            }
+            .frame(width: 20)
+            .foregroundStyle(.secondary)
+            .padding(.leading, isDrop ? 16 : 0)
+
+            if isDrop {
+                Text("D")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+            }
 
             Group {
                 if let ghost {
@@ -72,6 +99,15 @@ struct SetRowView: View {
                     Label("Delete", systemImage: "trash")
                 }
             }
+            // PRD §7.9/§7.4: offered only on a completed row — the caller
+            // withholds `onAddDrop` entirely for anything not yet ticked
+            // (§15 "drop set added to an incomplete parent" is blocked).
+            if let onAddDrop {
+                Button(action: onAddDrop) {
+                    Label("+ Drop", systemImage: "arrow.turn.down.right")
+                }
+                .tint(.orange)
+            }
         }
         .onAppear(perform: populate)
         .onChange(of: existingSet?.id) { _, _ in populate() }
@@ -86,6 +122,13 @@ struct SetRowView: View {
         } else if let ghost {
             weightText = formatted(ghost.weightKg)
             repsText = String(ghost.reps)
+            hasEdited = false
+        } else if let dropPrefillWeightKg {
+            // §7.9: only the weight is pre-filled — reps genuinely vary
+            // set-to-set on a drop, so guessing one would be a fact-shaped
+            // lie (PRD §4 Principle 5).
+            weightText = formatted(dropPrefillWeightKg)
+            repsText = ""
             hasEdited = false
         } else {
             weightText = ""

@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import AudioToolbox
 
 /// PRD §7 (M3), plus the new mid-workout superset behaviour: exercises can
 /// be grouped explicitly (§7.4 "Add to superset") or auto-detected from
@@ -12,10 +13,25 @@ struct ActiveWorkoutView: View {
     let onDiscard: () -> Void
 
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var restingExerciseID: UUID?
     @State private var restStartedAt: Date?
     @State private var restAdjustSeconds = 0
+    /// Set the moment the app leaves the foreground while a rest period is
+    /// running (§ scenePhase handling below), reset whenever rest starts or
+    /// clears. Distinguishes "this rest completed while backgrounded" (system
+    /// notification's job, plus the one-time permission ask, §7.5) from
+    /// "completed while foregrounded" (haptic/sound/banner) at expiry time.
+    @State private var restStartedWhileBackgrounded = false
+    /// Content of the currently-scheduled/most-recently-fired rest
+    /// notification, kept around only so the foreground banner (§7.5) can
+    /// show the exact same "Next: …" line rather than recomputing it.
+    @State private var pendingRestContent: RestNotificationScheduler.Content?
+
+    @State private var restCompleteBanner: RestNotificationScheduler.Content?
+    @State private var bannerDismissTask: Task<Void, Never>?
+    @State private var isShowingNotificationPrimer = false
 
     @State private var showingAddExercise = false
     @State private var showingDiscardConfirm = false
@@ -68,7 +84,10 @@ struct ActiveWorkoutView: View {
                             restStartedAt: restStartedAt,
                             durationSeconds: max(restDuration(for: restingExercise) + restAdjustSeconds, 15),
                             onSkip: { clearRest() },
-                            onAdjust: { delta in restAdjustSeconds += delta }
+                            onAdjust: { delta in
+                                restAdjustSeconds += delta
+                                rescheduleRestNotification(for: restingExercise)
+                            }
                         )
                         .padding(.horizontal)
                     }
@@ -79,12 +98,17 @@ struct ActiveWorkoutView: View {
                                 workoutExercise: workoutExercise,
                                 allExercises: sortedExercises,
                                 ghosts: ghosts(for: workoutExercise),
+                                currentRestSeconds: restDuration(for: workoutExercise),
                                 onSetCompleted: handleCompleted,
                                 onSetUncompleted: handleUncompleted,
+                                onDropAdded: handleDropAdded,
                                 onGroupWith: { partner in group(workoutExercise, with: partner) },
                                 onUngroup: { ungroup(workoutExercise) },
                                 onRemove: { remove(workoutExercise) },
-                                onShowDetail: { detailExercise = workoutExercise.exercise }
+                                onShowDetail: { detailExercise = workoutExercise.exercise },
+                                onSetRestConfig: { seconds, saveAsDefault in
+                                    applyRestConfig(workoutExercise, seconds: seconds, saveAsDefault: saveAsDefault)
+                                }
                             )
                             Divider()
                         }
@@ -126,7 +150,10 @@ struct ActiveWorkoutView: View {
                 isPresented: $showingDiscardConfirm,
                 titleVisibility: .visible
             ) {
-                Button("Discard Workout", role: .destructive, action: onDiscard)
+                Button("Discard Workout", role: .destructive) {
+                    clearRest()
+                    onDiscard()
+                }
                 Button("Keep Going", role: .cancel) {}
             }
             .alert("Superset?", isPresented: $isShowingSupersetPrompt) {
@@ -135,8 +162,42 @@ struct ActiveWorkoutView: View {
             } message: {
                 Text("Group \(promptedNames.previous) and \(promptedNames.current) as a superset? Rest gets skipped between them.")
             }
+            // PRD §7.5: asked once, the first time rest completes while
+            // backgrounded — see `RestNotificationScheduler.handleBackgroundedCompletion`.
+            .alert("Allow Notifications?", isPresented: $isShowingNotificationPrimer) {
+                Button("Not Now", role: .cancel) {}
+                Button("Enable") { RestNotificationScheduler.requestSystemPermission() }
+            } message: {
+                Text("Rerack can let you know when your rest timer ends, even while your phone is locked.")
+            }
+            .overlay(alignment: .top) {
+                if let restCompleteBanner {
+                    RestCompleteBanner(content: restCompleteBanner, onDismiss: dismissRestCompleteBanner)
+                        .padding(.horizontal)
+                        .padding(.top, 8)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+            .animation(.snappy, value: restCompleteBanner != nil)
             .onReceive(restTickTimer) { _ in checkRestExpiry() }
+            .onChange(of: scenePhase) { _, newPhase in
+                switch newPhase {
+                case .background:
+                    if restingExerciseID != nil { restStartedWhileBackgrounded = true }
+                case .active:
+                    checkRestExpiry()
+                    // Still resting after that check means expiry hasn't
+                    // happened yet — we're back watching it in foreground, so
+                    // a brief earlier background dip shouldn't make the
+                    // *eventual* completion look like a backgrounded one.
+                    if restingExerciseID != nil { restStartedWhileBackgrounded = false }
+                default:
+                    break
+                }
+            }
         }
+        .onAppear { applyIdleTimerSetting() }
+        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
     }
 
     // MARK: - Header
@@ -192,22 +253,35 @@ struct ActiveWorkoutView: View {
     private func restDuration(for workoutExercise: WorkoutExercise) -> Int {
         if let override = workoutExercise.restSecondsUsed { return override }
         if let exerciseDefault = workoutExercise.exercise?.defaultRestSeconds { return exerciseDefault }
-        let profiles = try? modelContext.fetch(FetchDescriptor<UserProfile>())
-        return profiles?.first?.defaultRestSeconds ?? 180
+        return currentProfile()?.defaultRestSeconds ?? 180
+    }
+
+    private func currentProfile() -> UserProfile? {
+        (try? modelContext.fetch(FetchDescriptor<UserProfile>()))?.first
+    }
+
+    private func formattedWeight(_ value: Double) -> String {
+        value.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(value)) : String(value)
     }
 
     // MARK: - Set completion
 
-    private func handleCompleted(_ workoutExercise: WorkoutExercise, _ setLog: SetLog) {
+    private func handleCompleted(_ workoutExercise: WorkoutExercise, _ setLog: SetLog, hasPendingDrop: Bool) {
         recalculateCachedStats()
         recordForDetection(workoutExercise)
 
-        if WorkoutEngine.shouldStartRest(after: workoutExercise, allExercises: sortedExercises) {
+        // PRD §10.2 "Auto-start rest timer" — off means sets simply don't
+        // start a rest period (see the `UserProfile.autoStartRestTimer` doc
+        // comment for why there's no manual-start fallback in V1).
+        let autoStartEnabled = currentProfile()?.autoStartRestTimer ?? true
+        if autoStartEnabled, WorkoutEngine.shouldStartRest(after: workoutExercise, hasPendingDrop: hasPendingDrop, allExercises: sortedExercises) {
             let now = Date()
             setLog.restStartedAt = now
             restingExerciseID = workoutExercise.id
             restStartedAt = now
             restAdjustSeconds = 0
+            restStartedWhileBackgrounded = false
+            scheduleRestNotification(for: workoutExercise)
         }
         try? modelContext.save()
     }
@@ -220,26 +294,123 @@ struct ActiveWorkoutView: View {
         try? modelContext.save()
     }
 
+    /// §7.9: a drop was just added under a set on this exercise — the chain
+    /// isn't over, so any rest already ticking for it is stale. Unlike the
+    /// superset round check, this fires regardless of round state: an open
+    /// drop chain always wins (`shouldStartRest`'s `hasPendingDrop` gate is
+    /// the same rule at tick time; this is its mirror at add-time, for the
+    /// case where the tick already started a timer before the drop existed).
+    private func handleDropAdded(_ workoutExercise: WorkoutExercise) {
+        if restingExerciseID == workoutExercise.id {
+            clearRest()
+        }
+    }
+
     private func recalculateCachedStats() {
         workout.cachedVolumeKg = totalVolume
         workout.cachedSetCount = totalSets
         workout.cachedRepCount = allCompletedSets.reduce(0) { $0 + $1.reps }
     }
 
+    /// The single funnel every rest-ending path goes through — un-tick,
+    /// skip, drop-added, exercise removed, natural expiry, finish, discard.
+    /// Cancelling the pending notification here (rather than at each call
+    /// site) is what makes that cancellation airtight: nothing can end a
+    /// rest period without also going through this.
     private func clearRest() {
         restingExerciseID = nil
         restStartedAt = nil
         restAdjustSeconds = 0
+        restStartedWhileBackgrounded = false
+        pendingRestContent = nil
+        RestNotificationScheduler.cancelPending()
     }
 
     private func checkRestExpiry() {
         guard let restingExercise, let restStartedAt else { return }
         let duration = max(restDuration(for: restingExercise) + restAdjustSeconds, 15)
         guard Date() >= restStartedAt.addingTimeInterval(TimeInterval(duration)) else { return }
+
+        let completedWhileBackgrounded = restStartedWhileBackgrounded
+        let content = pendingRestContent ?? .init(durationSeconds: duration, nextLine: nil)
         clearRest()
-        // Full notification/banner handling lands in M5 — this haptic is a
-        // harmless preview of "rest is over" while the app is foregrounded.
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
+
+        if completedWhileBackgrounded {
+            // The system notification (if permission was already granted)
+            // already alerted the user while the app was away — this
+            // foreground moment is instead the one PRD-specified trigger for
+            // asking permission, so future rests can notify too.
+            RestNotificationScheduler.handleBackgroundedCompletion {
+                isShowingNotificationPrimer = true
+            }
+        } else {
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            if currentProfile()?.restTimerSoundEnabled ?? true {
+                AudioServicesPlaySystemSound(1005) // PRD §10.2 "Rest timer sound"
+            }
+            presentRestCompleteBanner(content)
+        }
+    }
+
+    // MARK: - Rest notification scheduling (§7.5)
+
+    private func scheduleRestNotification(for workoutExercise: WorkoutExercise) {
+        guard let restStartedAt else { return }
+        let duration = max(restDuration(for: workoutExercise) + restAdjustSeconds, 15)
+        let fireDate = restStartedAt.addingTimeInterval(TimeInterval(duration))
+        let next = WorkoutEngine.nextSet(after: workoutExercise, allExercises: sortedExercises, ghostsProvider: ghosts(for:))
+        let nextLine = next.map { "\($0.exerciseName) · Set \($0.setNumber) · \(formattedWeight($0.weightKg)) kg × \($0.reps)" }
+        let content = RestNotificationScheduler.Content(durationSeconds: duration, nextLine: nextLine)
+        pendingRestContent = content
+        RestNotificationScheduler.schedule(fireAt: fireDate, content: content)
+    }
+
+    /// PRD §7.5: adjusting the timer (−15s/+15s) or changing the exercise's
+    /// rest config mid-rest both change the fire time, so the stale
+    /// notification is cancelled (inside `schedule`) and a fresh one takes
+    /// its place — not just cancelled outright.
+    private func rescheduleRestNotification(for workoutExercise: WorkoutExercise) {
+        guard restingExerciseID == workoutExercise.id else { return }
+        scheduleRestNotification(for: workoutExercise)
+    }
+
+    private func presentRestCompleteBanner(_ content: RestNotificationScheduler.Content) {
+        bannerDismissTask?.cancel()
+        restCompleteBanner = content
+        bannerDismissTask = Task {
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled else { return }
+            restCompleteBanner = nil
+        }
+    }
+
+    private func dismissRestCompleteBanner() {
+        bannerDismissTask?.cancel()
+        restCompleteBanner = nil
+    }
+
+    /// PRD §7.4/§7.5: sets either the per-exercise-in-workout override or the
+    /// per-exercise default, depending on the "save as default" toggle in
+    /// `RestDurationPickerSheet`. Saving as default clears the workout-scoped
+    /// override so the hierarchy (§7.5) falls through to the value just set,
+    /// rather than leaving a stale override that would shadow it.
+    private func applyRestConfig(_ workoutExercise: WorkoutExercise, seconds: Int, saveAsDefault: Bool) {
+        if saveAsDefault {
+            workoutExercise.exercise?.defaultRestSeconds = seconds
+            workoutExercise.restSecondsUsed = nil
+        } else {
+            workoutExercise.restSecondsUsed = seconds
+        }
+        try? modelContext.save()
+        rescheduleRestNotification(for: workoutExercise)
+    }
+
+    /// PRD §10.2 "Keep screen awake" — scoped to this screen only, per the
+    /// task's explicit instruction; `onDisappear` always turns it back off
+    /// regardless of the setting so leaving the workout can never strand the
+    /// idle timer disabled for the rest of the app.
+    private func applyIdleTimerSetting() {
+        UIApplication.shared.isIdleTimerDisabled = currentProfile()?.keepScreenAwakeDuringWorkout ?? true
     }
 
     // MARK: - Superset auto-detection (new)
@@ -293,7 +464,11 @@ struct ActiveWorkoutView: View {
     private func hasIncompleteExpectedSets(_ workoutExercise: WorkoutExercise) -> Bool {
         let expected = ghosts(for: workoutExercise).count
         guard expected > 0 else { return false }
-        let completed = (workoutExercise.sets ?? []).filter(\.isCompleted).count
+        // Top-level sets only (§7.9). Drops are continuations of a set, not
+        // sets of their own — counting them here would make a drop chain look
+        // like progress against the expected count and wrongly suppress the
+        // superset prompt. Same reasoning as `WorkoutEngine.completedCount`.
+        let completed = WorkoutEngine.completedCount(workoutExercise)
         return completed > 0 && completed < expected
     }
 
@@ -343,6 +518,9 @@ struct ActiveWorkoutView: View {
     // MARK: - Lifecycle
 
     private func finish() {
+        // A pending rest notification would otherwise fire for a workout
+        // that's already over, pointing at a "next set" nobody's doing.
+        clearRest()
         workout.endedAt = Date()
         recalculateCachedStats()
         try? modelContext.save()

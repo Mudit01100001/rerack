@@ -16,6 +16,17 @@ final class UserProfile {
 
     var defaultRestSeconds: Int = 180
 
+    /// PRD §10.2 Workout section — M5.
+    var restTimerSoundEnabled: Bool = true
+    /// Gates whether ticking a set starts a rest period at all. PRD §7.5 says
+    /// there's no manual "start rest" button in V1, so turning this off means
+    /// no rest timer runs for the rest of the workout rather than requiring
+    /// a manual-start affordance that doesn't exist yet.
+    var autoStartRestTimer: Bool = true
+    /// PRD §10.2 — applied via `UIApplication.isIdleTimerDisabled`, scoped to
+    /// the active workout screen only (`ActiveWorkoutView`), never globally.
+    var keepScreenAwakeDuringWorkout: Bool = true
+
     /// PRD §8.5 / §10.2 — no UI until M6, but the setting exists from M1 so
     /// there's no migration needed when the Live Activity ships.
     var islandTickLogsRaw: String = IslandTickSource.lastSession.rawValue
