@@ -26,8 +26,17 @@ struct ActiveWorkoutView: View {
     // PRD §21-style reasoning on transient vs. persisted state)
     @State private var recentHistory: [UUID] = []
     @State private var pendingPairs: Set<PairKey> = []
-    @State private var dismissedPairs: Set<PairKey> = []
-    @State private var maybeSupersetPair: (WorkoutExercise, WorkoutExercise)?
+    @State private var declinedPairs: Set<PairKey> = []
+
+    /// Held separately from `isShowingSupersetPrompt` on purpose. SwiftUI
+    /// sets an alert's `isPresented` binding back to false *before* running
+    /// the tapped button's action — so if the pair lived in the same state
+    /// the binding clears, "No" would find it already nil and silently fail
+    /// to record the decline. Keeping identity here means the button action
+    /// always has something to act on.
+    @State private var promptedPair: PairKey?
+    @State private var promptedNames: (current: String, previous: String) = ("", "")
+    @State private var isShowingSupersetPrompt = false
 
     private let restTickTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -120,19 +129,11 @@ struct ActiveWorkoutView: View {
                 Button("Discard Workout", role: .destructive, action: onDiscard)
                 Button("Keep Going", role: .cancel) {}
             }
-            .alert(
-                "Superset?",
-                isPresented: Binding(
-                    get: { maybeSupersetPair != nil },
-                    set: { if !$0 { maybeSupersetPair = nil } }
-                )
-            ) {
-                Button("Yes", action: confirmMaybeSuperset)
-                Button("No", role: .cancel, action: dismissMaybeSuperset)
+            .alert("Superset?", isPresented: $isShowingSupersetPrompt) {
+                Button("Yes", action: confirmSupersetPrompt)
+                Button("No", role: .cancel, action: declineSupersetPrompt)
             } message: {
-                if let pair = maybeSupersetPair {
-                    Text("Group \(pair.1.exercise?.name ?? "that exercise") and \(pair.0.exercise?.name ?? "this one") as a superset? Rest is skipped between them from now on.")
-                }
+                Text("Group \(promptedNames.previous) and \(promptedNames.current) as a superset? Rest gets skipped between them.")
             }
             .onReceive(restTickTimer) { _ in checkRestExpiry() }
         }
@@ -243,13 +244,17 @@ struct ActiveWorkoutView: View {
 
     // MARK: - Superset auto-detection (new)
 
-    /// PRD (new, per direct request): if you leave an exercise mid-way and
-    /// log a set on a different one, that's a "maybe superset?" — asked
-    /// once. If the same alternation happens again without an answer having
-    /// already grouped them, it's auto-confirmed with no further prompt.
-    /// Explicitly declining suppresses detection for that pair for the rest
-    /// of this workout. Pre-planned and explicitly-grouped pairs are never
-    /// re-evaluated here — this only looks at pairs that are still ungrouped.
+    /// PRD §7.8.1. If you leave an exercise mid-way and log a set on a
+    /// different one, that's a "maybe superset?" — asked once.
+    ///
+    /// **"No" is final.** A declined pair goes into `declinedPairs` and is
+    /// never asked about, and never auto-grouped, again for the rest of this
+    /// workout. Only a prompt that went *unanswered* (dismissed without a
+    /// button, or never surfaced because another prompt was already up) is
+    /// eligible for the auto-group-on-second-alternation path.
+    ///
+    /// Pre-planned and explicitly-grouped pairs are never re-evaluated here —
+    /// this only ever looks at pairs that are currently ungrouped.
     private func recordForDetection(_ workoutExercise: WorkoutExercise) {
         recentHistory.append(workoutExercise.id)
         if recentHistory.count > 6 { recentHistory.removeFirst() }
@@ -260,16 +265,25 @@ struct ActiveWorkoutView: View {
               previous.supersetGroup == nil else { return }
 
         let key = PairKey(workoutExercise.id, previous.id)
-        guard !dismissedPairs.contains(key) else { return }
+        guard !declinedPairs.contains(key) else { return }
         guard hasIncompleteExpectedSets(previous) else { return }
 
         if pendingPairs.contains(key) {
             SupersetGrouping.group(workoutExercise, with: previous, among: sortedExercises)
             pendingPairs.remove(key)
-        } else {
-            pendingPairs.insert(key)
-            maybeSupersetPair = (workoutExercise, previous)
+            return
         }
+
+        pendingPairs.insert(key)
+        // Don't stack prompts — if one is already up, this pair stays pending
+        // and takes the auto-group path on its next alternation.
+        guard !isShowingSupersetPrompt else { return }
+        promptedPair = key
+        promptedNames = (
+            current: workoutExercise.exercise?.name ?? "this one",
+            previous: previous.exercise?.name ?? "that exercise"
+        )
+        isShowingSupersetPrompt = true
     }
 
     /// "Left mid-way" needs a known expected count to compare against —
@@ -283,21 +297,24 @@ struct ActiveWorkoutView: View {
         return completed > 0 && completed < expected
     }
 
-    private func confirmMaybeSuperset() {
-        if let pair = maybeSupersetPair {
-            SupersetGrouping.group(pair.0, with: pair.1, among: sortedExercises)
-            pendingPairs.remove(PairKey(pair.0.id, pair.1.id))
+    private func confirmSupersetPrompt() {
+        guard let key = promptedPair else { return }
+        if let a = sortedExercises.first(where: { $0.id == key.a }),
+           let b = sortedExercises.first(where: { $0.id == key.b }) {
+            SupersetGrouping.group(a, with: b, among: sortedExercises)
         }
-        maybeSupersetPair = nil
+        pendingPairs.remove(key)
+        promptedPair = nil
     }
 
-    private func dismissMaybeSuperset() {
-        if let pair = maybeSupersetPair {
-            let key = PairKey(pair.0.id, pair.1.id)
-            pendingPairs.remove(key)
-            dismissedPairs.insert(key)
-        }
-        maybeSupersetPair = nil
+    /// "No" means no. The pair is removed from the pending set *and* added to
+    /// `declinedPairs`, so no amount of further alternation will group it —
+    /// the user answered, and the app doesn't get to overrule that.
+    private func declineSupersetPrompt() {
+        guard let key = promptedPair else { return }
+        pendingPairs.remove(key)
+        declinedPairs.insert(key)
+        promptedPair = nil
     }
 
     // MARK: - Exercises

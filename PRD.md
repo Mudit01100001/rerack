@@ -1,12 +1,19 @@
 # Product Requirements Document — **Rerack** *(working name)*
 
 > A free, local-first iOS strength-training logbook — and, as of this revision, cardio logbook too.
-> **Version 0.5** · Author: Mudit · Date: 2026-08-07
+> **Version 0.6** · Author: Mudit · Date: 2026-08-08
 > `Rerack` is the current working name — good enough to build under, not locked in. See **Appendix A** for how to keep it swappable and for the alternates on the bench.
 
 ---
 
 ## Changelog
+
+### v0.5 → v0.6
+| # | Change | Section |
+|---|---|---|
+| 1 | **Bug fixed: "No" on the superset prompt didn't reliably stick.** SwiftUI clears an alert's `isPresented` binding *before* running the tapped button's action, so the decline handler could find its state already nil and never record the refusal — meaning a declined pair could still be auto-grouped later. Pair identity is now held in state the binding doesn't touch. **"No" is now final for that pair, for the rest of the workout.** | §7.8.1 |
+| 2 | **New §23 — exercise data & visual asset sourcing.** Honest provenance of the current catalogue (hand-written, not sourced), plus verified free options: **MuscleMap** (MIT, native SwiftUI, front/back male/female muscle highlighting with heatmaps, zero dependencies) and **free-exercise-db** (Unlicense/public domain, 800+ exercises with instructions and images). wger evaluated and **not** recommended — CC-BY-SA share-alike obligations when a public-domain alternative exists. | §23 |
+| 3 | **§6.2 narrowed and §2.2 updated** — "never ship exercise media" was too strong. Now: out of scope M1–M10, **revisited at M11**. | §2.2, §6.2, §23.3 |
 
 ### v0.4 → v0.5
 | # | Change | Section |
@@ -94,7 +101,7 @@ This should drive design tie-breaks throughout: if a feature can live on the Loc
 - Apple Watch app (V1–V2; strong candidate for V3)
 - iPad-optimised layout (must not crash, need not be beautiful)
 - Android
-- **Exercise demonstration images or videos — removed from the product entirely** (§6.2)
+- **Exercise demonstration images or videos — out of scope for M1–M10; revisited at M11** (§6.2, §23.3)
 - Monetisation of any kind
 
 ---
@@ -215,7 +222,9 @@ New users see the onboarding flow (§10.1) before the tab bar.
 
 ### 6.2 A note on exercise media — removed, not deferred
 
-Per your direction: the app will **never** ship demonstration photos or videos for exercises. This is a deliberate product decision, not a backlog item, and it removes a large recurring content burden (sourcing, licensing, and hosting media for 200+ exercises, consistently, forever).
+⚠️ **Narrowed in v0.6.** This section previously read "the app will never ship exercise media." That was too strong — your clarification was that it applied to *current builds*, not to the product forever: *"for later versions it would be really great to have them added, M11 type."*
+
+**The rule now:** no exercise demonstration images or videos through **M1–M10**. The burden that motivated the original decision (sourcing, licensing, and hosting media for 200+ exercises) turned out to be largely solved by public-domain sources — see **§23** for the research. Revisit at **M11** with MuscleMap (MIT) for anatomy graphics and free-exercise-db (public domain) for instruction text and images.
 
 Consequences, applied throughout this document:
 - The Exercise Detail header starts at the exercise name. No image, no frame, no reserved space.
@@ -1414,6 +1423,44 @@ This two-tier shape means the feature is honest about who gets what, and nobody 
 ### 22.3 Why both are staying research notes, not commitments
 
 Both technologies are free and on-device, which is exactly this product's constraint (§1, Principle 7) — that's why they're worth documenting now rather than waving off. But neither is a small feature: §22.1 needs a real accuracy spike before it can be scoped honestly, and §22.2 needs the two-tier design worked out before it can be built at all. Committing either to a specific milestone today would just be a guess. When one of these gets picked up for real, it starts with the research step described above, not with UI.
+
+---
+
+## 23. Exercise Data & Visual Assets — Sourcing (research, logged for M11)
+
+### 23.1 Where the current 190-exercise catalogue came from — an honest answer
+
+**I wrote it.** `Rerack/Resources/ExerciseCatalog.json` was authored by hand from general knowledge of common gym movements — it was **not** downloaded, scraped, or imported from any dataset. That's why it appeared quickly, and it's also why it has the limitations it has:
+
+- ~190 exercises, not exhaustive
+- `bodyweightFactor` values (push-up 0.64, inverted row 0.5, etc.) are **reasonable published estimates**, not measured values — fine for consistent self-comparison (§13.3's argument applies here too), not fine as biomechanical fact
+- No instruction text, no images, no `force`/`level`/`mechanic` metadata
+- Muscle assignments are conventional, not sourced from a citable reference
+
+It works, it's yours outright, and it has no licensing questions attached. But if the app ever wants a bigger library or any text/visual content, §23.2 is the better foundation.
+
+### 23.2 Free, permissively-licensed sources — verified
+
+Researched in response to the direct question of whether high-resolution muscle-group graphics exist that are genuinely free to use. Short answer: **yes, and better than expected.**
+
+| Source | License | What it gives us | Fit |
+|---|---|---|---|
+| **[MuscleMap](https://github.com/melihcolpan/MuscleMap)** | **MIT** | Native **SwiftUI** SDK. Interactive human body muscle maps, **male & female, front & back**, 36 muscle groups (22 base + 14 sub-groups), **heatmap support** with intensity scales. **iOS 17+**, **zero external dependencies**, Swift Package Manager. | ⭐ **Near-perfect.** This is exactly the §9.5 muscle-map share card *and* a per-exercise anatomy graphic, as a drop-in package. MIT means no attribution burden beyond keeping the licence file. |
+| **[free-exercise-db](https://github.com/yuhonas/free-exercise-db)** | **Unlicense** (public domain — the most permissive licence that exists) | **800+ exercises** with `name`, `force`, `level`, `mechanic`, `equipment`, `primaryMuscles`, `secondaryMuscles`, **`instructions`** (array), `category`, and **images**. Images are hosted on GitHub raw and can be bundled. | ⭐ Would 4× the library, add real instruction text, and add images — all public domain. |
+| **[wger](https://github.com/wger-project/wger)** | Code AGPL-3.0; **exercise data + images CC-BY-SA 3.0** | Large multi-language exercise DB with images, some sourced from Wikipedia. | ⚠️ Usable **but** CC-BY-SA is *share-alike* — it obliges attribution and can create derivative-licensing questions. Given free-exercise-db is public domain, there's no reason to take on that obligation. **Not recommended.** |
+
+**The licence point that matters:** Unlicense and MIT impose essentially no obligations. CC-BY-SA does. For an app you intend to keep free and open-source, the first two are clean; wger's data is the one to avoid *not* because it's bad, but because a strictly better-licensed alternative exists.
+
+### 23.3 Recommended plan — **M11**
+
+Per your correction (*"when I said don't include any videos or images, that was for recent changes and current builds... for later versions it would be really great to have them"*), §6.2's "exercise media is removed from the product" is hereby **narrowed**: it remains true for M1–M10, and is **revisited at M11** rather than being a permanent product decision. §2.2's non-goal line is updated to match.
+
+1. **Add MuscleMap via SPM.** Use it in two places: the muscle-map share card (§9.5 variant 4) and a highlighted anatomy graphic on the Exercise Detail header (§9.2) — the thing that would "make the app feel more alive."
+2. **Merge free-exercise-db into the catalogue.** Keep the current hand-written entries as the canonical set (they carry `loadType`/`bodyweightFactor`, which free-exercise-db lacks), and merge in the extra ~600 exercises plus `instructions` text for everything matched by name. The seeder's `catalogVersion` mechanism (§9.1) exists precisely to make this a non-destructive additive update.
+3. **Fill the "How To" tab with the imported `instructions` text.** This turns the "Coming Soon" stub (§9.2 Tab 3) into a real feature at near-zero cost, and stays consistent with §6.2's "text only, never video" position.
+4. **Bundle images locally, don't hot-link.** free-exercise-db images are served from GitHub raw; fetching them at runtime would break the app's zero-network promise (§12.2). Bundle a subset at build time instead.
+
+**One caveat worth flagging now:** adding SPM dependencies contradicts §12.1's "no third-party dependencies in V1." That rule exists to avoid maintenance tax on a solo project — and MuscleMap (MIT, zero transitive dependencies, vendorable if it's ever abandoned) is a reasonable exception. It should be a deliberate decision at M11, not a silent drift.
 
 ---
 
