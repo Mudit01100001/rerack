@@ -7,6 +7,7 @@ import SwiftData
 struct RoutineListView: View {
     @Query(sort: \Routine.orderIndex) private var routines: [Routine]
     @Environment(\.modelContext) private var modelContext
+    @Environment(ActiveWorkoutCoordinator.self) private var coordinator
 
     @State private var editingRoutine: Routine?
 
@@ -36,22 +37,14 @@ struct RoutineListView: View {
             ForEach(grouped, id: \.folderName) { group in
                 Section(group.folderName) {
                     ForEach(group.routines) { routine in
-                        RoutineCard(routine: routine)
-                            .contentShape(Rectangle())
-                            .onTapGesture { editingRoutine = routine }
-                            .swipeActions(edge: .trailing) {
-                                Button(role: .destructive) {
-                                    modelContext.delete(routine)
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
-                                }
-                                Button {
-                                    duplicate(routine)
-                                } label: {
-                                    Label("Duplicate", systemImage: "doc.on.doc")
-                                }
-                                .tint(.blue)
-                            }
+                        RoutineCard(
+                            routine: routine,
+                            isStartDisabled: coordinator.liveWorkout != nil,
+                            onStart: { start(routine) },
+                            onEdit: { editingRoutine = routine },
+                            onDuplicate: { duplicate(routine) },
+                            onDelete: { modelContext.delete(routine) }
+                        )
                     }
                 }
             }
@@ -61,10 +54,21 @@ struct RoutineListView: View {
         }
     }
 
-    /// PRD §9.3 long-press menu includes Duplicate — implemented here as a
-    /// swipe action since the routine card doesn't have a long-press menu
-    /// of its own yet. Deep-copies the exercise/set-template structure but
-    /// not history (a duplicate is a fresh plan, not a fresh log).
+    /// PRD §7.7 / §9.3: creates the Workout + WorkoutExercise shells and
+    /// hands off to the coordinator. Guarded against starting with nothing
+    /// to do or while another workout is already live (§6).
+    private func start(_ routine: Routine) {
+        guard coordinator.liveWorkout == nil else { return }
+        guard !(routine.exercises ?? []).isEmpty else { return }
+        let workout = WorkoutStarter.start(routine: routine, context: modelContext)
+        routine.lastPerformedAt = Date()
+        try? modelContext.save()
+        coordinator.present(workout)
+    }
+
+    /// PRD §9.3 long-press menu includes Duplicate. Deep-copies the
+    /// exercise/set-template structure but not history (a duplicate is a
+    /// fresh plan, not a fresh log).
     private func duplicate(_ routine: Routine) {
         let copy = Routine(
             name: "\(routine.name) copy",

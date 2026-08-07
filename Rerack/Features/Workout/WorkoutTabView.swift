@@ -1,12 +1,12 @@
 import SwiftUI
 import SwiftData
 
-/// PRD §6, §9.1, §9.3. Exercise Library (M1) and Routines (M2) are both
-/// real here now. Starting a workout — either empty or from a routine — is
-/// still a stub; that's the Active Workout screen, M3.
+/// PRD §6, §7, §9.1, §9.3. Exercise Library (M1), Routines (M2), and now
+/// starting a workout (M3) are all real.
 struct WorkoutTabView: View {
     @Query(sort: \Routine.orderIndex) private var routines: [Routine]
     @Environment(\.modelContext) private var modelContext
+    @Environment(ActiveWorkoutCoordinator.self) private var coordinator
 
     @State private var newRoutine: Routine?
 
@@ -14,14 +14,14 @@ struct WorkoutTabView: View {
         NavigationStack {
             List {
                 Section {
-                    Button {
-                        // Active workout screen ships in M3 (PRD §7).
-                    } label: {
+                    Button(action: startEmptyWorkout) {
                         Label("Start Empty Workout", systemImage: "play.fill")
                     }
-                    .disabled(true)
+                    .disabled(coordinator.liveWorkout != nil)
                 } footer: {
-                    Text("Starting a workout ships in M3.")
+                    if coordinator.liveWorkout != nil {
+                        Text("Finish or discard your current workout first.")
+                    }
                 }
 
                 RoutineListView()
@@ -57,9 +57,16 @@ struct WorkoutTabView: View {
         modelContext.insert(routine)
         newRoutine = routine
     }
+
+    private func startEmptyWorkout() {
+        guard coordinator.liveWorkout == nil else { return }
+        let workout = WorkoutStarter.startEmptyWorkout(context: modelContext)
+        coordinator.present(workout)
+    }
 }
 
 #Preview {
     WorkoutTabView()
         .modelContainer(for: [Routine.self, Exercise.self], inMemory: true)
+        .environment(ActiveWorkoutCoordinator())
 }

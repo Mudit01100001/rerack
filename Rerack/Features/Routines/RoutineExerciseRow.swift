@@ -28,12 +28,7 @@ struct RoutineExerciseRow: View {
     @State private var restOverrideText = ""
 
     private var supersetLabel: String? {
-        guard let group = routineExercise.supersetGroup else { return nil }
-        let members = allExercisesInRoutine
-            .filter { $0.supersetGroup == group }
-            .sorted { $0.orderIndex < $1.orderIndex }
-        guard let position = members.firstIndex(where: { $0.id == routineExercise.id }) else { return nil }
-        return "\(group)\(position + 1)"
+        SupersetGrouping.label(for: routineExercise, among: allExercisesInRoutine)
     }
 
     private var groupCandidates: [RoutineExercise] {
@@ -125,7 +120,11 @@ struct RoutineExerciseRow: View {
         }
         .padding(.vertical, 6)
         .sheet(isPresented: $showingGroupPicker) {
-            GroupWithPickerSheet(candidates: groupCandidates, onPick: onGroupWith)
+            GroupWithPickerSheet(
+                candidates: groupCandidates,
+                nameProvider: { $0.exercise?.name ?? "Exercise" },
+                onPick: onGroupWith
+            )
         }
         .onAppear {
             if let override = routineExercise.restSecondsOverride {

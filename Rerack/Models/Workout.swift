@@ -80,6 +80,8 @@ final class WorkoutExercise {
     }
 }
 
+extension WorkoutExercise: SupersetGroupable {}
+
 /// PRD §7.2, §7.9, §13.1. A `SetLog` row is only ever created when a set is
 /// *completed* — ghost rows are pure view state and never touch the database
 /// (§7.3), so every row here represents something that actually happened.

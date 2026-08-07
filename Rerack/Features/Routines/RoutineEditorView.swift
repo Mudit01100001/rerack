@@ -150,39 +150,18 @@ struct RoutineEditorView: View {
         }
     }
 
-    // MARK: - Supersets (PRD §7.8)
+    // MARK: - Supersets (PRD §7.8) — logic shared with the active workout, see SupersetGrouping.swift
 
     private func group(_ a: RoutineExercise, with b: RoutineExercise) {
-        let groupLetter = a.supersetGroup ?? b.supersetGroup ?? nextAvailableLetter()
-        a.supersetGroup = groupLetter
-        b.supersetGroup = groupLetter
+        SupersetGrouping.group(a, with: b, among: sortedExercises)
     }
 
     private func ungroup(_ routineExercise: RoutineExercise) {
-        let group = routineExercise.supersetGroup
-        routineExercise.supersetGroup = nil
-        if let group {
-            dissolveGroupIfSingle(group)
-        }
+        SupersetGrouping.ungroup(routineExercise, among: sortedExercises)
     }
 
-    /// A superset needs 2+ members by definition — if ungrouping or removal
-    /// leaves exactly one exercise carrying a group letter, that letter is
-    /// cleared too rather than leaving an orphaned "A1" with no partner.
     private func dissolveGroupIfSingle(_ group: String) {
-        let members = sortedExercises.filter { $0.supersetGroup == group }
-        if members.count == 1 {
-            members.first?.supersetGroup = nil
-        }
-    }
-
-    private func nextAvailableLetter() -> String {
-        let used = Set(sortedExercises.compactMap(\.supersetGroup))
-        for scalar in UnicodeScalar("A").value...UnicodeScalar("Z").value {
-            let letter = String(UnicodeScalar(scalar)!)
-            if !used.contains(letter) { return letter }
-        }
-        return "A"
+        SupersetGrouping.dissolveIfSingle(group, among: sortedExercises)
     }
 
     // MARK: - Set templates

@@ -79,6 +79,8 @@ final class RoutineExercise {
     }
 }
 
+extension RoutineExercise: SupersetGroupable {}
+
 /// PRD §9.3: the routine's *targets*. These seed ghost values the first time
 /// a routine is run; after that, ghosts come from actual history (§7.3) and
 /// these targets self-update on finish if `updateValuesOnFinish` is on.

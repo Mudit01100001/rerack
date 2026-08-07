@@ -1,12 +1,19 @@
 # Product Requirements Document — **Rerack** *(working name)*
 
 > A free, local-first iOS strength-training logbook — and, as of this revision, cardio logbook too.
-> **Version 0.4** · Author: Mudit · Date: 2026-08-07
+> **Version 0.5** · Author: Mudit · Date: 2026-08-07
 > `Rerack` is the current working name — good enough to build under, not locked in. See **Appendix A** for how to keep it swappable and for the alternates on the bench.
 
 ---
 
 ## Changelog
+
+### v0.4 → v0.5
+| # | Change | Section |
+|---|---|---|
+| 1 | **Superset model reframed** — grouping is now understood as primarily a *mid-workout* act, not a routine-editor one, with **auto-detection** from alternating behaviour. The pre-planned route stays, unchanged, but is no longer treated as the main path. | §7.8.1 |
+| 2 | **Bug fixed:** the routine card's "Start Routine" button appeared broken. It was disabled (no active workout screen existed pre-M3) *and* the whole card had a tap gesture opening the editor, so every tap fell through to editing. Tapping the card or the button now starts the routine; **edit/duplicate/remove moved behind long-press**, per your request. | §9.3 |
+| 3 | M3 built: active workout screen, ghost sets, tick-to-complete, live stats, wall-clock rest timer with superset suppression, cross-tab banner, crash recovery. | §7, §16 |
 
 ### v0.3 → v0.4
 | # | Change | Section |
@@ -352,10 +359,38 @@ A **superset** is two or more exercises performed back-to-back with no rest betw
 
 **Data model:** `supersetGroup: String?` on both `RoutineExercise` and `WorkoutExercise`. Exercises sharing a group label (`"A"`, `"B"`, …) form a superset. Order within the group follows `orderIndex`.
 
-**Creating a superset:**
-- *In the routine editor:* select 2+ exercises → `Create Superset`. Or long-press-drag one exercise onto another.
-- *Mid-workout:* exercise `···` menu → `Add to superset` → pick the partner.
-- *Breaking one:* `···` → `Remove from superset`. If only one member remains, the group dissolves automatically.
+**Creating a superset — three routes, deliberately** *(revised v0.5)*:
+1. *In the routine editor (pre-planned):* exercise `···` → `Group With…` → pick the partner. Auto-assigns the next free letter.
+2. *Mid-workout (explicit):* same `···` → `Add to Superset` on the active workout screen. **This is the primary route in practice** — see §7.8.1.
+3. *Mid-workout (auto-detected):* the app notices you alternating and offers to group them for you — §7.8.1.
+
+- *Breaking one:* `···` → `Remove from Superset`. If only one member remains, the group dissolves automatically.
+
+#### 7.8.1 Why grouping is mostly a mid-workout act — and why it auto-detects
+
+⚠️ **Revised in v0.5, based on how you actually train.** v0.2–v0.4 assumed supersets were declared upfront in the routine editor. Your correction: *"supersetting is something I decide when I'm working out instead of beforehand,"* and — more pointedly — *"picking an exercise and classifying it as a superset does a lot of nothing"* if all it buys is a visual label.
+
+That critique is correct, and it reframes what the grouping is **for**. Grouping is not decoration; it earns its place only because it changes two real behaviours:
+
+| What grouping actually buys | Where it matters |
+|---|---|
+| **Rest suppression** — no timer between A1 and A2, only after the round | §7.5, built |
+| **"What's next" on the Live Activity** — the Lock Screen can say *"next: A2 Cable Fly, then back to A1"* instead of assuming you finish an exercise before moving on | §8.4, M6 |
+
+The second one is the real payoff, and it's why grouping is worth capturing *at all* rather than just letting you log sets in any order. The app can't tell the Lock Screen what's coming next unless it knows the two exercises are a pair.
+
+**Auto-detection rules (built in M3):**
+
+1. You complete a set on exercise **A**, then complete a set on exercise **B** without finishing A (A has known expected sets remaining — from history or a routine target).
+2. First time this happens for that pair → a single, dismissible prompt: **"Superset? Group these two so rest is skipped between them."**
+3. **Yes** → grouped immediately. **No** → that pair is never asked about again for the rest of this workout.
+4. If you're not asked (or the prompt is dismissed by tapping away) and the **same alternation happens a second time**, the pair is grouped automatically with no further prompting — the behaviour has spoken for itself by then.
+5. Detection only ever looks at pairs that are **currently ungrouped**. Anything pre-planned or explicitly grouped is left alone.
+6. If there's no expected set count to judge against (a brand-new exercise, no history, no routine target), detection stays silent rather than guessing.
+
+**On keeping the routine-editor route** — you said *"I think the option to add a routine as a superset is useful. Don't fully remove it, but I personally am not gonna use it that way."* Kept, unchanged. It costs nothing to maintain (identical code path, see `SupersetGrouping.swift`) and it's genuinely the right tool for someone whose split is fixed.
+
+**Detection state is intentionally not persisted.** The "asked already / declined already" bookkeeping lives in memory for the duration of the workout only. It's a nudge, not data — losing it to a force-quit costs nothing, and persisting it would mean migrating a table for a feature whose entire job is to be unobtrusive.
 
 **Visual treatment:**
 - Members render as one visually-joined card stack with a **coloured vertical bar** down the leading edge.
@@ -1189,7 +1224,7 @@ You mentioned getting to TestFlight within a day. Worth separating two things:
 |---|---|---|---|
 | **M1 — Skeleton** ✅ *built* | 4-tab nav (Home/Workout/Cardio/Profile), SwiftData schema **incl. App Group**, exercise catalogue seed (190 exercises), library browse/search/create, **Cardio manual entry + photo attach** (§21), **Appearance setting** (§10.2) | 3–4 days | ✅ |
 | **M2 — Routines** ✅ *built* | Create/edit/delete/duplicate, folders, set templates, **superset grouping in the editor**. Reorder is up/down buttons rather than drag-to-reorder — a deliberate simplification, noted in code, upgradeable later. "Start Routine" stays disabled — that's M3. | 4–5 days | ✅ |
-| **M3 — The Core** | Active workout, set rows, tick, ghost sets, swipes, add/remove, live stats, crash recovery | 1.5 weeks | ✅ **ship it** |
+| **M3 — The Core** ✅ *built* | Active workout, set rows, tick, ghost sets, swipe-to-delete, add/remove exercises, live stats, crash recovery, cross-tab banner, basic rest timer, **mid-workout supersets incl. auto-detection (§7.8.1)** | 1.5 weeks | ✅ **ship it** |
 | **M4 — Supersets & drop sets** | Round-robin pointer, grouped rendering, drop chains, rest suppression rules | 1 week | ✅ |
 | **M5 — Rest timer** | Wall-clock timer, per-exercise config, local notifications | 3–4 days | ✅ |
 | **M6 — Live Activity** | Widget extension, all four layouts, `LiveActivityIntent` tick, state machine, background relaunch | 1.5 weeks | ✅ |
