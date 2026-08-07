@@ -35,6 +35,8 @@ struct ActiveWorkoutView: View {
 
     @State private var showingAddExercise = false
     @State private var showingDiscardConfirm = false
+    @State private var showingEmptyFinishConfirm = false
+    @State private var showingSummary = false
     @State private var detailExercise: Exercise?
 
     // MARK: Superset auto-detection (in-memory only — a soft nudge feature,
@@ -136,7 +138,7 @@ struct ActiveWorkoutView: View {
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Finish", action: finish)
+                    Button("Finish", action: attemptFinish)
                 }
             }
             .sheet(isPresented: $showingAddExercise) {
@@ -145,9 +147,28 @@ struct ActiveWorkoutView: View {
             .sheet(item: $detailExercise) { exercise in
                 ExerciseQuickDetailView(exercise: exercise)
             }
+            .fullScreenCover(isPresented: $showingSummary) {
+                WorkoutSummaryView(workout: workout) {
+                    showingSummary = false
+                    onFinish()
+                }
+            }
             .confirmationDialog(
                 "Discard this workout? This can't be undone.",
                 isPresented: $showingDiscardConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Discard Workout", role: .destructive) {
+                    clearRest()
+                    onDiscard()
+                }
+                Button("Keep Going", role: .cancel) {}
+            }
+            // Discard-empty guard: a "Finish" with nothing logged would
+            // otherwise save an empty workout row forever cluttering history.
+            .confirmationDialog(
+                "This workout has no completed sets.",
+                isPresented: $showingEmptyFinishConfirm,
                 titleVisibility: .visible
             ) {
                 Button("Discard Workout", role: .destructive) {
@@ -517,13 +538,84 @@ struct ActiveWorkoutView: View {
 
     // MARK: - Lifecycle
 
+    /// PRD §9.4 discard-empty guard: finishing with zero completed sets
+    /// offers to discard rather than saving an empty `Workout` row.
+    private func attemptFinish() {
+        if totalSets == 0 {
+            showingEmptyFinishConfirm = true
+        } else {
+            finish()
+        }
+    }
+
     private func finish() {
         // A pending rest notification would otherwise fire for a workout
         // that's already over, pointing at a "next set" nobody's doing.
         clearRest()
         workout.endedAt = Date()
         recalculateCachedStats()
+        // PRD §13.4: PR detection runs once, here, so Best Session Volume
+        // sees the whole session. §9.3: the routine baseline updates from
+        // the same completed data. Both run before the summary screen shows
+        // so its 🏆 flags and "N new records" line (§9.4) are already
+        // correct — the summary's own "Done" only persists the optional
+        // photo/gym/tags/notes fields added on that screen, not these numbers.
+        PersonalRecordDetector.detect(workout: workout, context: modelContext)
+        updateRoutineBaseline()
         try? modelContext.save()
-        onFinish()
+        showingSummary = true
+    }
+
+    /// PRD §9.3 "baseline loop," step 4: when `updateValuesOnFinish` is on,
+    /// the routine's own `RoutineSetTemplate` targets are overwritten with
+    /// what was actually completed, so next time's ghosts (§7.3) come from a
+    /// template that already matches reality. `lastPerformedAt` updates
+    /// unconditionally — that's a plain fact about the routine, independent
+    /// of whether it self-updates its targets.
+    private func updateRoutineBaseline() {
+        guard let routine = workout.routine else { return }
+        routine.lastPerformedAt = Date()
+        guard routine.updateValuesOnFinish else { return }
+
+        for workoutExercise in sortedExercises {
+            guard let exerciseID = workoutExercise.exercise?.id,
+                  let routineExercise = routine.exercises?.first(where: { $0.exercise?.id == exerciseID })
+            else { continue }
+
+            // Top-level sets only — drop chains (§7.9) are a workout-time
+            // concept the routine editor never plans for.
+            let completed = (workoutExercise.sets ?? [])
+                .filter { $0.isCompleted && $0.parentSetID == nil }
+                .sorted { $0.orderIndex < $1.orderIndex }
+            var templates = (routineExercise.setTemplates ?? []).sorted { $0.orderIndex < $1.orderIndex }
+
+            for (index, setLog) in completed.enumerated() {
+                if index < templates.count {
+                    templates[index].targetWeightKg = setLog.addedWeightKg
+                    templates[index].targetReps = setLog.reps
+                    templates[index].setType = setLog.setType
+                } else {
+                    let template = RoutineSetTemplate(
+                        orderIndex: index,
+                        targetWeightKg: setLog.addedWeightKg,
+                        targetReps: setLog.reps,
+                        setType: setLog.setType
+                    )
+                    modelContext.insert(template)
+                    template.routineExercise = routineExercise
+                    templates.append(template)
+                }
+            }
+
+            // Fewer sets performed than planned — the routine self-heals
+            // toward reality (§9.3), so the surplus targets go with it
+            // rather than lingering as a stale plan for sets that didn't
+            // happen this time.
+            if templates.count > completed.count {
+                for extra in templates[completed.count...] {
+                    modelContext.delete(extra)
+                }
+            }
+        }
     }
 }
