@@ -1188,7 +1188,7 @@ You mentioned getting to TestFlight within a day. Worth separating two things:
 | # | Contents | Effort | TestFlight? |
 |---|---|---|---|
 | **M1 — Skeleton** ✅ *built* | 4-tab nav (Home/Workout/Cardio/Profile), SwiftData schema **incl. App Group**, exercise catalogue seed (190 exercises), library browse/search/create, **Cardio manual entry + photo attach** (§21), **Appearance setting** (§10.2) | 3–4 days | ✅ |
-| **M2 — Routines** | Create/edit/delete/reorder, folders, set templates, **superset grouping in the editor** | 4–5 days | |
+| **M2 — Routines** ✅ *built* | Create/edit/delete/duplicate, folders, set templates, **superset grouping in the editor**. Reorder is up/down buttons rather than drag-to-reorder — a deliberate simplification, noted in code, upgradeable later. "Start Routine" stays disabled — that's M3. | 4–5 days | ✅ |
 | **M3 — The Core** | Active workout, set rows, tick, ghost sets, swipes, add/remove, live stats, crash recovery | 1.5 weeks | ✅ **ship it** |
 | **M4 — Supersets & drop sets** | Round-robin pointer, grouped rendering, drop chains, rest suppression rules | 1 week | ✅ |
 | **M5 — Rest timer** | Wall-clock timer, per-exercise config, local notifications | 3–4 days | ✅ |

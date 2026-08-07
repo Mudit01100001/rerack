@@ -12,6 +12,14 @@ struct ExerciseLibraryView: View {
     private var exercises: [Exercise]
 
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
+
+    /// When set, this view acts as a picker (used by the routine editor,
+    /// M2) instead of the M1 browse experience: tapping a row calls this
+    /// and dismisses, rather than opening the quick-detail sheet.
+    var onPick: ((Exercise) -> Void)?
+
+    private var isPickMode: Bool { onPick != nil }
 
     @State private var searchText = ""
     @State private var selectedMuscles: Set<Muscle> = []
@@ -87,6 +95,11 @@ struct ExerciseLibraryView: View {
         .searchable(text: $searchText, prompt: "Search exercises")
         .navigationTitle("Exercise Library")
         .toolbar {
+            if isPickMode {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     showingAddCustom = true
@@ -144,7 +157,12 @@ struct ExerciseLibraryView: View {
     private func exerciseRow(_ exercise: Exercise) -> some View {
         Button {
             markRecent(exercise)
-            selectedExercise = exercise
+            if let onPick {
+                onPick(exercise)
+                dismiss()
+            } else {
+                selectedExercise = exercise
+            }
         } label: {
             VStack(alignment: .leading, spacing: 2) {
                 Text(exercise.name)
