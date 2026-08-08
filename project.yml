@@ -30,6 +30,14 @@ targets:
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+        # Answers the App Store Connect export-compliance question at
+        # upload time instead of on the web every single build: the app
+        # makes zero network calls and has no custom encryption anywhere
+        # (PRD §12.2), so this is "None of the algorithms" made permanent.
+        # If M9's optional Health sync or V2's networking ever land, this
+        # is the line to revisit — plain HTTPS via system frameworks stays
+        # exempt (false), but any custom crypto would need this flipped.
+        ITSAppUsesNonExemptEncryption: false
     entitlements:
       path: Config/Rerack.entitlements
       properties:
