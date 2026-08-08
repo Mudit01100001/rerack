@@ -40,17 +40,15 @@ This one bites if skipped — the app stores its database in a shared App Group 
 3. Register
 4. Go back to your App ID from Step 1 → edit → **App Groups** → Configure → tick `group.com.mudit.logbook` → Save
 
-## Step 3 — Set your team in Xcode
+## Step 3 — Open in Xcode
 
 ```bash
 cd "/Users/mudit/Developer/iOS APPS/01. Weight Tracking" && xcodegen generate && open Rerack.xcodeproj
 ```
 
-In Xcode: select the **Rerack** target → **Signing & Capabilities** → tick **Automatically manage signing** → pick your **Team** from the dropdown.
+Your Team ID (`YHK4D97KC4`) is already set in `project.yml`, so Xcode should pick it up automatically. Select the **Rerack** target → **Signing & Capabilities** and just confirm **Team** shows your name and there's no red error banner.
 
-Xcode will generate the provisioning profile. If it shows an error about the App Group, click **Try Again** — it usually resolves once Steps 1–2 are done.
-
-> Once you know your Team ID, tell me and I'll add it to `project.yml` so this step stops being manual on future regenerations.
+If there *is* an error about the App Group, click **Try Again** — it usually resolves once Steps 1–2 are done (the App Group has to be registered *and* attached to the App ID, not just registered).
 
 ## Step 4 — Create the App Store Connect record
 
