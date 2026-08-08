@@ -13,7 +13,7 @@ import Foundation
 /// the first TestFlight upload (see Appendix A.0), so they're named neutrally
 /// and are not expected to change when the app is renamed.
 enum AppIdentity {
-    static let displayName = "Rerack"
+    static let displayName = "Kyojin"
     static let bundleID = "com.mudit.logbook"
     static let appGroupID = "group.com.mudit.logbook"
 

@@ -12,7 +12,7 @@ settings:
     # Single place that controls what's on the icon / in TestFlight — see
     # PRD Appendix A.0. Nothing else in the target settings should spell
     # the app's name out by itself.
-    APP_DISPLAY_NAME: Rerack
+    APP_DISPLAY_NAME: Kyojin
 
 targets:
   Rerack:
