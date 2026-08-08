@@ -145,7 +145,7 @@ struct ActiveWorkoutView: View {
                 ExercisePickerSheet { exercise in addExercise(exercise) }
             }
             .sheet(item: $detailExercise) { exercise in
-                ExerciseQuickDetailView(exercise: exercise)
+                ExerciseDetailView(exercise: exercise)
             }
             .fullScreenCover(isPresented: $showingSummary) {
                 WorkoutSummaryView(workout: workout) {

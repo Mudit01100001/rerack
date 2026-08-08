@@ -113,7 +113,7 @@ struct ExerciseLibraryView: View {
             AddCustomExerciseView()
         }
         .sheet(item: $selectedExercise) { exercise in
-            ExerciseQuickDetailView(exercise: exercise)
+            ExerciseDetailView(exercise: exercise)
         }
     }
 
