@@ -1238,7 +1238,7 @@ You mentioned getting to TestFlight within a day. Worth separating two things:
 | **M5 — Rest timer** | Wall-clock timer, per-exercise config, local notifications | 3–4 days | ✅ |
 | **M6 — Live Activity** | Widget extension, all four layouts, `LiveActivityIntent` tick, state machine, background relaunch | 1.5 weeks | ✅ |
 | **M7 — Finish flow** | Summary screen, photo, tags, PR detection, routine value updating | 1 week | ✅ |
-| **M8 — Analytics & explainers** | Exercise detail, graph, PR cards, profile stats, calendar, **`?` system + all registry content** | 1.5 weeks | ✅ |
+| **M8 — Analytics & explainers** ✅ *built* | Exercise detail (Summary/History/How To), Swift Charts progress graph across all five metrics, PR cards, profile stats + calendar + exercise usage, activity graph, **`?` system with all 13 registry entries written**. Measures tile still stubbed — needs HealthKit (M9). | 1.5 weeks | ✅ **TestFlight-ready** |
 | **M9 — Data** | CSV export, Health read + bodyweight maths, Health write, measures | 4–5 days | ✅ |
 | **M10 — Share** | Card rendering, animal ladder + 18 assets, muscle map, export actions | 1 week | ✅ |
 | **M11 — V1 polish** | Onboarding, icon, empty states, accessibility pass | 4–5 days | ✅ **V1** |
