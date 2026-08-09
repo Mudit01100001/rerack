@@ -25,6 +25,38 @@ xcuserdata/
 *.ipa
 *.dSYM.zip
 *.dSYM
+*.xcarchive
+
+## Signing & secrets — nothing here has ever been committed (verified), these
+## are guards for things that would be easy to add by accident later.
+##
+## NOTE ON WHAT IS *NOT* SECRET: the Team ID in project.yml
+## (DEVELOPMENT_TEAM) is deliberately tracked. A Team ID isn't a credential —
+## it ships inside every distributed app binary and is needed for the project
+## to build at all. The private keys below are the actual secrets.
+*.p8
+*.p12
+*.pem
+*.key
+*.cer
+*.certSigningRequest
+*.mobileprovision
+*.provisionprofile
+AuthKey_*.p8
+
+## Environment / config secrets (relevant once V2's backend exists — PRD §12.5)
+.env
+.env.*
+!.env.example
+secrets.json
+Secrets.swift
+*.secrets
+
+## Fastlane, if it ever gets added
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
 
 ## macOS
 .DS_Store
