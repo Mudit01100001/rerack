@@ -31,6 +31,7 @@ struct ActiveWorkoutView: View {
     @State private var isShowingNotificationPrimer = false
 
     @State private var showingAddExercise = false
+    @State private var showingWorkoutSettings = false
     @State private var showingDiscardConfirm = false
     @State private var showingEmptyFinishConfirm = false
     @State private var showingSummary = false
@@ -107,23 +108,35 @@ struct ActiveWorkoutView: View {
                     }
 
                     ForEach(sortedExercises) { workoutExercise in
-                        VStack(spacing: 0) {
-                            card(for: workoutExercise)
-                            Divider()
-                        }
-                        .padding(.horizontal)
+                        card(for: workoutExercise)
+                            .padding(.horizontal)
                     }
 
+                    // Editing the routine mid-workout (§7.4) — sits below
+                    // every card because that's where you are when you
+                    // realise you want one more movement.
                     Button {
                         showingAddExercise = true
                     } label: {
                         Label("Add Exercise", systemImage: "plus")
+                            .font(.subheadline.weight(.medium))
+                            .frame(maxWidth: .infinity, minHeight: 48)
                     }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.accentColor)
+                    .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
                     .padding(.horizontal)
-                    .padding(.bottom, 24)
+
+                    workoutActions
+                        .padding(.horizontal)
+                        .padding(.top, 8)
+                        .padding(.bottom, 24)
                 }
                 .padding(.top, 8)
             }
+            // Grouped grey behind the cards — without it the cards are the
+            // same colour as the page and the grouping does nothing.
+            .background(Color(.systemGroupedBackground))
             .navigationTitle(workout.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -140,6 +153,9 @@ struct ActiveWorkoutView: View {
             }
             .sheet(isPresented: $showingAddExercise) {
                 ExercisePickerSheet { exercise in addExercise(exercise) }
+            }
+            .sheet(isPresented: $showingWorkoutSettings) {
+                WorkoutSettingsSheet(workout: workout)
             }
             .sheet(item: $detailExercise) { exercise in
                 ExerciseDetailView(exercise: exercise)
@@ -236,6 +252,33 @@ struct ActiveWorkoutView: View {
         guard workout.bodyweightKg == nil, workout.isLive else { return }
         guard let kg = await HealthKitManager.bodyweightKg(asOf: workout.startedAt) else { return }
         workout.bodyweightKg = kg
+    }
+
+    /// Session-level actions, at the end of the scroll rather than in the
+    /// toolbar. Discard is destructive and irreversible, so it lives where
+    /// you have to deliberately scroll past your whole workout to reach it —
+    /// never adjacent to the tick you're tapping forty times a session.
+    private var workoutActions: some View {
+        VStack(spacing: 10) {
+            Button {
+                showingWorkoutSettings = true
+            } label: {
+                Label("Workout Settings", systemImage: "gearshape")
+                    .font(.subheadline)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(.bordered)
+
+            Button(role: .destructive) {
+                showingDiscardConfirm = true
+            } label: {
+                Label("Discard Workout", systemImage: "trash")
+                    .font(.subheadline)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(.bordered)
+            .tint(.red)
+        }
     }
 
     // MARK: - Exercise cards

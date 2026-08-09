@@ -42,6 +42,7 @@ struct ExerciseCardView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var showingGroupPicker = false
     @State private var showingRestPicker = false
+    @State private var showingPlateCalculator = false
 
     /// Every top-level set row that exists in the store, completed or not —
     /// drops are rendered as children of these (§7.9), so they stay out of
@@ -83,9 +84,11 @@ struct ExerciseCardView: View {
         allExercises.filter { $0.id != workoutExercise.id }
     }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
+    // MARK: - Card header
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
                 if let supersetLabel {
                     Text(supersetLabel)
                         .font(.caption.bold())
@@ -98,62 +101,133 @@ struct ExerciseCardView: View {
                     Text(workoutExercise.exercise?.name ?? "Exercise")
                         .font(.headline)
                         .foregroundStyle(.primary)
+                        .multilineTextAlignment(.leading)
                 }
                 .buttonStyle(.plain)
-                Spacer()
-                Menu {
-                    Button {
-                        showingRestPicker = true
-                    } label: {
-                        Label("Set Rest Timer", systemImage: "timer")
-                    }
-                    Button {
-                        showingGroupPicker = true
-                    } label: {
-                        Label("Add to Superset", systemImage: "link")
-                    }
-                    if workoutExercise.supersetGroup != nil {
-                        Button(action: onUngroup) {
-                            Label("Remove from Superset", systemImage: "link.badge.minus")
-                        }
-                    }
-                    Button(role: .destructive, action: onRemove) {
-                        Label("Remove Exercise", systemImage: "trash")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .imageScale(.large)
-                }
+                Spacer(minLength: 4)
+                menu
             }
 
+            // Rest setting sits directly under the name: it's per-exercise
+            // config, so it belongs to this card's header rather than being
+            // buried one level down in the `···` menu.
+            Button {
+                showingRestPicker = true
+            } label: {
+                Label(RestNotificationScheduler.formattedClock(currentRestSeconds), systemImage: "timer")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 12)
+        .padding(.bottom, 10)
+    }
+
+    private var menu: some View {
+        Menu {
+            Button {
+                showingRestPicker = true
+            } label: {
+                Label("Set Rest Timer", systemImage: "timer")
+            }
+            // Offered on every exercise rather than only the ones we can
+            // prove use a bar: equipment metadata is a hand-written guess
+            // (§23.1), and hiding the calculator on a mislabelled row is
+            // worse than showing it on one that doesn't need it.
+            Button {
+                showingPlateCalculator = true
+            } label: {
+                Label("Plate Calculator", systemImage: "circle.grid.2x2")
+            }
+            Button {
+                showingGroupPicker = true
+            } label: {
+                Label("Add to Superset", systemImage: "link")
+            }
+            if workoutExercise.supersetGroup != nil {
+                Button(action: onUngroup) {
+                    Label("Remove from Superset", systemImage: "link.badge.minus")
+                }
+            }
+            Button(role: .destructive, action: onRemove) {
+                Label("Remove Exercise", systemImage: "trash")
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .imageScale(.large)
+                .frame(width: 44, height: 32)
+                .contentShape(Rectangle())
+        }
+    }
+
+    // MARK: - Set list
+
+    /// Alternating row tints. The set rows are dense numeric fields, and with
+    /// a flat background the eye loses which weight belongs to which reps —
+    /// the banding is doing real legibility work, not decoration. Drop rows
+    /// inherit their parent's band so a chain reads as one block.
+    private var setList: some View {
+        VStack(spacing: 0) {
             ForEach(0..<rowCount, id: \.self) { index in
                 // Only a *completed* row is passed as `existingSet` — an
                 // un-ticked one reverts to its ghost, per §7.2/§7.3.
                 let topSet = setLog(at: index).flatMap { $0.isCompleted ? $0 : nil }
                 let rowGhost = GhostSetResolver.ghostSet(at: index, in: ghosts)
-                SetRowView(
-                    orderIndex: index,
-                    existingSet: topSet,
-                    ghost: rowGhost,
-                    onComplete: { weight, reps in complete(index: index, weight: weight, reps: reps) },
-                    onUncomplete: { uncomplete(index: index) },
-                    onDeleteExisting: { deleteExisting(index: index) },
-                    onAddDrop: topSet.map { parent in { addDrop(from: parent) } }
-                )
-                if let topSet {
-                    dropChainRows(under: topSet, ghostDrops: rowGhost?.drops ?? [])
+                VStack(spacing: 0) {
+                    SetRowView(
+                        orderIndex: index,
+                        existingSet: topSet,
+                        ghost: rowGhost,
+                        onComplete: { weight, reps in complete(index: index, weight: weight, reps: reps) },
+                        onUncomplete: { uncomplete(index: index) },
+                        onDeleteExisting: { deleteExisting(index: index) },
+                        onAddDrop: topSet.map { parent in { addDrop(from: parent) } }
+                    )
+                    if let topSet {
+                        dropChainRows(under: topSet, ghostDrops: rowGhost?.drops ?? [])
+                    }
                 }
-            }
-
-            Button {
-                workoutExercise.plannedSetCount = rowCount + 1
-                onPlanChanged()
-            } label: {
-                Label("Add Set", systemImage: "plus")
-                    .font(.subheadline)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 4)
+                .background(index.isMultiple(of: 2) ? Color.clear : Color.primary.opacity(0.045))
             }
         }
-        .padding(.vertical, 8)
+    }
+
+    private var addSetButton: some View {
+        Button {
+            workoutExercise.plannedSetCount = rowCount + 1
+            onPlanChanged()
+        } label: {
+            Label("Add Set", systemImage: "plus")
+                .font(.subheadline)
+                .frame(maxWidth: .infinity, minHeight: 44)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Color.accentColor)
+        .overlay(Divider(), alignment: .top)
+    }
+
+    /// One exercise = one card: a header block (name, rest setting, `···`),
+    /// then the set list, then `Add Set`. Grouping them this way is what makes
+    /// a long workout scannable — before, every exercise ran together into one
+    /// undifferentiated column of rows.
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            header
+            Divider()
+            setList
+            addSetButton
+        }
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
+        .sheet(isPresented: $showingPlateCalculator) {
+            PlateCalculatorSheet(
+                exerciseName: workoutExercise.exercise?.name ?? "Exercise",
+                equipment: workoutExercise.exercise?.equipment ?? .barbell
+            )
+        }
         .sheet(isPresented: $showingGroupPicker) {
             GroupWithPickerSheet(
                 candidates: groupCandidates,
