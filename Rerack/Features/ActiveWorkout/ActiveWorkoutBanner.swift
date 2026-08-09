@@ -51,10 +51,8 @@ struct ActiveWorkoutBanner: View {
             .foregroundStyle(.white)
             .padding(.horizontal, DS.Space.sm)
             .padding(.vertical, DS.Space.xs + 2)
+            .frame(maxWidth: .infinity)
             .background(Color.accentColor, in: Capsule())
-            .shadow(color: .black.opacity(0.18), radius: 8, y: 3)
-            .padding(.horizontal, DS.Space.md)
-            .padding(.bottom, DS.Space.xxs)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Workout in progress. Tap to return.")

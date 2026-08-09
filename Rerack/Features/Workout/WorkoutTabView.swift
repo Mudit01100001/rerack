@@ -42,7 +42,12 @@ struct WorkoutTabView: View {
             List {
                 Section {
                     startRow
-                        .listRowInsets(EdgeInsets(top: DS.Space.xs, leading: DS.Space.md, bottom: DS.Space.xs, trailing: DS.Space.md))
+                        // Zero insets so the row *is* the card: the padding
+                        // that separates the buttons from its edge is applied
+                        // inside `startRow`, which is what makes the
+                        // concentric radius maths hold.
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                 }
 
@@ -99,16 +104,22 @@ struct WorkoutTabView: View {
     /// One row, two intents: build something reusable, or just start logging.
     /// Quick Start is the filled one because it's the only action here that
     /// begins a session.
+    /// Outer radius = inner radius + padding. With both at the same value the
+    /// gap between the curves reads as uneven and the buttons look wedged
+    /// into the corners, which is exactly what was wrong here.
     private var startRow: some View {
-        HStack(spacing: DS.Space.sm) {
+        let padding = DS.Space.xs
+        let innerRadius = DS.concentricRadius(outer: DS.Radius.large, inset: padding)
+
+        return HStack(spacing: padding) {
             Button {
                 createRoutine()
             } label: {
                 Label("New Routine", systemImage: "square.and.pencil")
                     .dsFont(DS.TypeScale.caption, relativeTo: .subheadline, weight: .semibold)
                     .foregroundStyle(Color.accentColor)
-                    .frame(maxWidth: .infinity, minHeight: 46)
-                    .background(Color.accentColor.opacity(0.12), in: .rect(cornerRadius: DS.Radius.medium, style: .continuous))
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .background(Color.accentColor.opacity(0.12), in: .rect(cornerRadius: innerRadius, style: .continuous))
             }
             .buttonStyle(.plain)
 
@@ -116,48 +127,65 @@ struct WorkoutTabView: View {
                 Label("Quick Start", systemImage: "play.fill")
                     .dsFont(DS.TypeScale.caption, relativeTo: .subheadline, weight: .semibold)
                     .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity, minHeight: 46)
-                    .background(Color.accentColor, in: .rect(cornerRadius: DS.Radius.medium, style: .continuous))
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .background(Color.accentColor, in: .rect(cornerRadius: innerRadius, style: .continuous))
             }
             .buttonStyle(.plain)
             .disabled(coordinator.liveWorkout != nil)
             .opacity(coordinator.liveWorkout != nil ? 0.45 : 1)
         }
+        .padding(padding)
+        .dsCard()
+        .padding(.horizontal, DS.Space.md)
+        .padding(.vertical, DS.Space.xxs)
     }
 
-    /// The split title *is* the switcher. Tapping it lists every other split,
-    /// plus the two ways to get a new one.
+    /// The split title *is* the switcher, with Edit beside it.
+    ///
+    /// The menu label deliberately holds no `Spacer`. A full-width label made
+    /// SwiftUI anchor the popover to the centre of that frame, so the menu
+    /// appeared in the middle of the screen instead of under the words you
+    /// tapped. The `Spacer` lives outside the `Menu` now.
     private func splitHeader(_ current: String) -> some View {
-        Menu {
-            Picker("Split", selection: splitBinding) {
-                ForEach(folders) { folder in
-                    Text(folder.name).tag(folder.name)
+        HStack(spacing: DS.Space.xs) {
+            Menu {
+                Picker("Split", selection: splitBinding) {
+                    ForEach(folders) { folder in
+                        Text(folder.name).tag(folder.name)
+                    }
+                }
+                Divider()
+                Button {
+                    showingNewSplit = true
+                } label: {
+                    Label("New Split", systemImage: "folder.badge.plus")
+                }
+                Button {
+                    showingTemplates = true
+                } label: {
+                    Label("Start from a Template", systemImage: "square.stack.3d.up")
+                }
+            } label: {
+                HStack(spacing: DS.Space.xxs) {
+                    Text(current)
+                        .dsFont(DS.TypeScale.body, relativeTo: .headline, weight: .semibold)
+                        .foregroundStyle(.primary)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .dsFont(DS.TypeScale.caption2, relativeTo: .caption2, weight: .semibold)
+                        .foregroundStyle(.secondary)
                 }
             }
-            Divider()
-            Button {
-                showingNewSplit = true
-            } label: {
-                Label("New Split", systemImage: "folder.badge.plus")
-            }
-            Button {
-                showingTemplates = true
-            } label: {
-                Label("Start from a Template", systemImage: "square.stack.3d.up")
-            }
-        } label: {
-            HStack(spacing: DS.Space.xxs) {
-                Text(current)
-                    .dsFont(DS.TypeScale.body, relativeTo: .headline, weight: .semibold)
-                    .foregroundStyle(.primary)
-                Image(systemName: "chevron.up.chevron.down")
-                    .dsFont(DS.TypeScale.caption2, relativeTo: .caption2, weight: .semibold)
-                    .foregroundStyle(.secondary)
-                Spacer()
-            }
-            .textCase(nil)
-            .padding(.vertical, DS.Space.xxs)
+
+            Spacer()
+
+            // Reordering is behind Edit rather than always live: a long-press
+            // drag that's permanently armed fires by accident on a list whose
+            // rows are mostly buttons.
+            EditButton()
+                .dsFont(DS.TypeScale.caption, relativeTo: .subheadline, weight: .medium)
         }
+        .textCase(nil)
+        .padding(.vertical, DS.Space.xxs)
     }
 
     /// Writing through the picker keeps "which split am I looking at" and

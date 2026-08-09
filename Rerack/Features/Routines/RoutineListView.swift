@@ -33,12 +33,18 @@ struct RoutineListView: View {
                 onDelete: { modelContext.delete(routine) }
             )
         }
-        // Drag to reorder within a split, so adding a Wednesday legs day
-        // doesn't strand it at the bottom. Reordering reuses only the
-        // indices this group already occupied, since orderIndex is global
-        // and a naive renumber would reshuffle every other split.
+        // Reorder and delete live in Edit mode (the button sits beside the
+        // split name). Reordering reuses only the indices this group already
+        // occupied, since orderIndex is global and a naive renumber would
+        // reshuffle every other split.
         .onMove { offsets, destination in
             move(in: visible, from: offsets, to: destination)
+        }
+        .onDelete { offsets in
+            for index in offsets where visible.indices.contains(index) {
+                modelContext.delete(visible[index])
+            }
+            try? modelContext.save()
         }
         .sheet(item: $editingRoutine) { routine in
             RoutineEditorView(routine: routine)

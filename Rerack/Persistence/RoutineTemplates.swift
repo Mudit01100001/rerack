@@ -158,8 +158,8 @@ extension RoutineTemplate {
 
     static let pushPullLegs = RoutineTemplate(
         id: "ppl",
-        title: "Push / Pull / Legs",
-        summary: "The standard three-way split, run once or twice a week",
+        title: "PPL (Simple)",
+        summary: "The standard three-way rotation, run once or twice a week",
         detail: """
         Everything that presses on one day, everything that pulls on the next, \
         legs on the third. Run it once through for three days a week, or twice \
