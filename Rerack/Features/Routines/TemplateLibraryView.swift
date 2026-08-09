@@ -22,7 +22,7 @@ struct TemplateLibraryView: View {
                     .buttonStyle(.plain)
                 }
             } footer: {
-                Text("Importing copies the workouts into your library. Nothing stays linked — edit or delete them like any workout you built yourself.")
+                Text("Importing copies the workouts into your library. Nothing stays linked, edit or delete them like any workout you built yourself.")
             }
         }
         .navigationTitle("Templates")
@@ -143,12 +143,12 @@ private struct TemplateDetailView: View {
         guard let first = targets.first else { return "" }
         let uniform = targets.allSatisfy { $0.weightKg == first.weightKg && $0.reps == first.reps }
         if uniform {
-            let reps = first.reps.map(String.init) ?? "—"
+            let reps = first.reps.map(String.init) ?? "-"
             guard let weight = first.weightKg else { return "\(targets.count) × \(reps)" }
             return "\(targets.count) × \(reps) @ \(formatted(weight)) kg"
         }
         return targets.map { target in
-            let reps = target.reps.map(String.init) ?? "—"
+            let reps = target.reps.map(String.init) ?? "-"
             guard let weight = target.weightKg else { return reps }
             return "\(formatted(weight))×\(reps)"
         }.joined(separator: ", ")

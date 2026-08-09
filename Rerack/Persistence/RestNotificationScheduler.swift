@@ -26,7 +26,7 @@ enum RestNotificationScheduler {
     static func schedule(fireAt: Date, content: Content) {
         cancelPending()
         let notification = UNMutableNotificationContent()
-        notification.title = "Rest complete — \(formattedClock(content.durationSeconds))"
+        notification.title = "Rest complete, \(formattedClock(content.durationSeconds))"
         notification.body = content.nextLine.map { "Next: \($0)" } ?? "Time to get back to it."
         notification.sound = .default
 

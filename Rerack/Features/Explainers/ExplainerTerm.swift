@@ -50,13 +50,13 @@ enum ExplainerTerm: String, CaseIterable, Identifiable {
     var summary: String {
         switch self {
         case .estimatedOneRepMax:
-            "The heaviest weight you could probably lift once, estimated from a heavier-rep set — so you don't have to actually test it."
+            "The heaviest weight you could probably lift once, estimated from a heavier-rep set, so you don't have to actually test it."
         case .volume:
             "Weight times reps, added up. The simplest single number for how much work you did."
         case .setVsSessionVolume:
             "Set volume is one set. Session volume is every set of that exercise in one workout."
         case .effectiveLoad:
-            "The weight your muscles actually moved — which for a pull-up is mostly you, not what's on the belt."
+            "The weight your muscles actually moved, which for a pull-up is mostly you, not what's on the belt."
         case .rpe:
             "A 1–10 rating of how hard a set felt. You decide it; the app never guesses it for you."
         case .personalRecordTypes:
@@ -66,13 +66,13 @@ enum ExplainerTerm: String, CaseIterable, Identifiable {
         case .dropSet:
             "Immediately doing another set at a lighter weight, with no rest, after finishing a normal set."
         case .warmupSets:
-            "Sets done to prepare, not to progress — so they're kept out of your volume by default."
+            "Sets done to prepare, not to progress, so they're kept out of your volume by default."
         case .trackAsProgress:
             "Whether this workout's sessions count toward your graphs and records."
         case .updateRoutineValues:
             "Whether finishing a session rewrites this workout's targets to match what you actually did."
         case .streak:
-            "Consecutive weeks — not days — in which you trained at least once."
+            "Consecutive weeks, not days, in which you trained at least once."
         case .ghostSets:
             "The grey numbers already filled in for you: what you did last time."
         }

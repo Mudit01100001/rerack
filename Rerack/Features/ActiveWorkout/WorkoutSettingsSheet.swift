@@ -36,7 +36,7 @@ struct WorkoutSettingsSheet: View {
                 // here beats leaving people to infer it from a toggle label.
                 Section {
                 } footer: {
-                    Text("Turning this off still logs and exports the workout — it just won't set records or move your progress graphs.")
+                    Text("Turning this off still logs and exports the workout, it just won't set records or move your progress graphs.")
                 }
 
                 if let profile {

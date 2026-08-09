@@ -38,7 +38,7 @@ enum ExerciseSeeder {
         }
 
         guard let seeds = try? JSONDecoder().decode([ExerciseSeed].self, from: data) else {
-            assertionFailure("ExerciseCatalog.json failed to decode — check enum raw values match Enums.swift")
+            assertionFailure("ExerciseCatalog.json failed to decode, check enum raw values match Enums.swift")
             return
         }
 

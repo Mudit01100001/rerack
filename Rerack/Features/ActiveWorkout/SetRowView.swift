@@ -65,7 +65,7 @@ struct SetRowView: View {
                 if let ghost {
                     Text("\(formatted(ghost.weightKg))×\(ghost.reps)")
                 } else {
-                    Text("—")
+                    Text("-")
                 }
             }
             .dsFont(DS.TypeScale.caption, relativeTo: .caption, design: .rounded)

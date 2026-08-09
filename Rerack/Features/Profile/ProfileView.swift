@@ -277,7 +277,7 @@ struct ProfileView: View {
         } header: {
             Text("Apple Health")
         } footer: {
-            Text("Bodyweight exercises count \(profile.useBodyweightInVolume ? "your bodyweight plus" : "only") the weight you add. Changing this affects future sets only — past workouts keep the numbers they were logged with.")
+            Text("Bodyweight exercises count \(profile.useBodyweightInVolume ? "your bodyweight plus" : "only") the weight you add. Changing this affects future sets only, past workouts keep the numbers they were logged with.")
         }
     }
 

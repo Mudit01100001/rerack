@@ -80,7 +80,7 @@ struct AddCardioSessionView: View {
                             .frame(maxHeight: 160)
                     }
                 } footer: {
-                    Text("Saved for your own record — auto-reading the numbers off it isn't built yet.")
+                    Text("Saved for your own record, auto-reading the numbers off it isn't built yet.")
                 }
             }
             .navigationTitle("Log Cardio")

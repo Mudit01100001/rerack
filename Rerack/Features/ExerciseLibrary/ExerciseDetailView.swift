@@ -239,7 +239,7 @@ struct ExerciseDetailView: View {
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             } else {
-                Text("—")
+                Text("-")
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(.tertiary)
                 Text("Not set yet")

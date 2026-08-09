@@ -14,13 +14,15 @@ enum DS {
     /// so every rounded rect in the app goes through these.
     enum Radius {
         /// Inputs, chips, small tags.
-        static let small: CGFloat = 10
+        static let small: CGFloat = 8
         /// Containers nested *inside* a card.
-        static let medium: CGFloat = 14
-        /// Top-level cards.
-        static let large: CGFloat = 20
+        static let medium: CGFloat = 12
+        /// Top-level cards. Tighter than the 20 first tried: at that radius
+        /// the corners read as decoration rather than structure, which is
+        /// what made the cards look soft and dated.
+        static let large: CGFloat = 16
         /// Sheets and full-width hero surfaces.
-        static let xlarge: CGFloat = 26
+        static let xlarge: CGFloat = 22
     }
 
     /// Nested corners look wrong when parent and child share a radius — the

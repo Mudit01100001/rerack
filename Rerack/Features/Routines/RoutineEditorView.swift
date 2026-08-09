@@ -32,7 +32,7 @@ struct RoutineEditorView: View {
         NavigationStack {
             Form {
                 Section("Name") {
-                    TextField("e.g. Monday — Push", text: $routine.name)
+                    TextField("e.g. Monday, Push", text: $routine.name)
                 }
 
                 Section("Notes") {
@@ -56,7 +56,7 @@ struct RoutineEditorView: View {
                     Toggle("Track as progress", isOn: $routine.trackAsProgress)
                     Toggle("Update target values on finish", isOn: $routine.updateValuesOnFinish)
                 } footer: {
-                    Text("Both default on. Turning off \"Track as progress\" keeps this routine's sessions in your history and export, but out of graphs and PRs — useful for deload weeks. See PRD §9.3.")
+                    Text("Both default on. Turning off \"Track as progress\" keeps this routine's sessions in your history and export, but out of graphs and PRs, useful for deload weeks. See PRD §9.3.")
                 }
 
                 Section("Exercises") {
@@ -86,6 +86,19 @@ struct RoutineEditorView: View {
                     } label: {
                         Label("Add Exercise", systemImage: "plus")
                     }
+                }
+
+                // The library lives here rather than on the Workout tab:
+                // browsing exercises is only useful while you're assembling
+                // something, which is exactly this screen.
+                Section {
+                    NavigationLink {
+                        ExerciseLibraryView()
+                    } label: {
+                        Label("Browse Exercise Library", systemImage: "magnifyingglass")
+                    }
+                } footer: {
+                    Text("Look up how an exercise is performed, or create a custom one.")
                 }
             }
             .navigationTitle(routine.name.isEmpty ? "New Workout" : routine.name)

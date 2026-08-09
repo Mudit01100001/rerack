@@ -70,33 +70,36 @@ struct RoutineTemplate: Identifiable {
 // MARK: - The bundled set
 
 extension RoutineTemplate {
-    static let all: [RoutineTemplate] = [.pushPullLegs, .pplAdvanced, .arnold, .upperLower, .fullBody]
+    static let all: [RoutineTemplate] = [.pushPullLegs, .bodyPartSplit, .arnold, .upperLower, .fullBody]
 
     /// A five-day upper-focused split, shipped with real working weights
     /// already filled in so the first session has targets rather than empty
     /// rows. Legs are deliberately absent — see the detail copy.
-    static let pplAdvanced = RoutineTemplate(
-        id: "ppl-advanced",
-        title: "PPL Advanced",
-        summary: "Five days, upper-body focused, each muscle hit twice",
+    static let bodyPartSplit = RoutineTemplate(
+        id: "body-part-split",
+        title: "Body Part Split",
+        summary: "Five days, one or two muscle groups each, upper body only",
         detail: """
-        A five-day upper-body split with working weights already filled in, \
-        so your first session has targets instead of blank rows — adjust them \
-        as you go and the app tracks from there.
+        One or two muscle groups per day, five days a week, with working \
+        weights already filled in so your first session has targets instead \
+        of blank rows. Adjust them as you go and the app tracks from there.
 
         Chest and back are each trained twice a week; arms get a dedicated \
-        day on top of the pressing and pulling that already hits them. Built \
-        for someone training three to five days a week who wants upper-body \
-        volume without a six-day commitment.
+        day on top of the pressing and pulling that already hits them.
+
+        Worth knowing: grouping by body part means overlap. Chest days \
+        already work your shoulders and triceps, and back days already work \
+        your biceps, so the arm day lands on muscles that aren't fully \
+        recovered. Push / Pull / Legs handles that more cleanly. This split \
+        wins on being easy to follow and easy to skip a day of.
 
         No leg day, by design. If you train legs, add a day or start from \
-        Push / Pull / Legs instead — this one assumes you're working around \
-        something.
+        Push / Pull / Legs instead.
         """,
         daysPerWeek: "5 days",
         isRecommended: true,
         routines: [
-            RoutineEntry(name: "Mon — Chest & Shoulders", exercises: [
+            RoutineEntry(name: "Mon: Chest & Shoulders", exercises: [
                 // The doc records two loads on this movement — a heavy top
                 // set and a lighter back-off — so it's one exercise with
                 // different targets, not two exercises.
@@ -106,28 +109,28 @@ extension RoutineTemplate {
                     SetTarget(weightKg: 18, reps: 9),
                 ]),
                 .uniform("Cable Fly (Mid)", sets: 3, weightKg: 12.5, reps: 10,
-                         note: "12.5 kg per arm. Some machines label the stack as the total for both handles — check before matching the number."),
+                         note: "12.5 kg per arm. Some machines label the stack as the total for both handles, check before matching the number."),
                 .uniform("Dumbbell Lateral Raise", sets: 3, weightKg: 7.5, reps: 10),
                 .uniform("Cable Rear Delt Fly", sets: 3, weightKg: 7.5, reps: 10),
             ]),
-            RoutineEntry(name: "Tue — Back & Biceps", exercises: [
+            RoutineEntry(name: "Tue: Back & Biceps", exercises: [
                 .uniform("Lat Pulldown (Wide Grip)", sets: 3, weightKg: 30, reps: 8,
-                         note: "30 kg on a kg-labelled stack; 90–110 lb on an imperial one."),
+                         note: "30 kg on a kg-labelled stack; 90-110 lb on an imperial one."),
                 .uniform("Seated Cable Row", sets: 3, weightKg: 30, reps: 8),
                 .uniform("Assisted Pull-Up Machine", sets: 3, weightKg: 18, reps: 8,
                          note: "18 kg of assistance, not load."),
                 .uniform("Cable Curl", sets: 3, weightKg: 12.5, reps: 9,
-                         note: "Bayesian style — cable behind you, arm back."),
+                         note: "Bayesian style, cable behind you, arm back."),
                 .uniform("Preacher Curl (Dumbbell)", sets: 3, weightKg: 12.5, reps: 9),
                 .uniform("Reverse Barbell Curl", sets: 3, weightKg: 12.5, reps: 9),
             ]),
-            RoutineEntry(name: "Thu — Shoulders & Triceps", exercises: [
+            RoutineEntry(name: "Thu: Shoulders & Triceps", exercises: [
                 .uniform("Machine Shoulder Press", sets: 3, weightKg: 40, reps: 9),
                 .uniform("Dumbbell Shoulder Press", sets: 3, weightKg: 17.5, reps: 9),
                 .uniform("Overhead Cable Triceps Extension", sets: 3, weightKg: 12.5, reps: 9),
                 .uniform("Dumbbell Triceps Kickback", sets: 3, weightKg: 12.5, reps: 9),
             ]),
-            RoutineEntry(name: "Fri — Chest & Back", exercises: [
+            RoutineEntry(name: "Fri: Chest & Back", exercises: [
                 ExerciseEntry("Incline Dumbbell Bench Press", sets: [
                     SetTarget(weightKg: 20, reps: 5),
                     SetTarget(weightKg: 18, reps: 9),
@@ -137,14 +140,14 @@ extension RoutineTemplate {
                 .uniform("Lat Pulldown (Wide Grip)", sets: 3, weightKg: 30, reps: 8),
                 .uniform("Seated Cable Row", sets: 3, weightKg: 30, reps: 8),
             ]),
-            RoutineEntry(name: "Sat — Biceps & Triceps", exercises: [
+            RoutineEntry(name: "Sat: Biceps & Triceps", exercises: [
                 .uniform("Cable Curl", sets: 3, weightKg: 12.5, reps: 9),
                 .uniform("Preacher Curl (Dumbbell)", sets: 3, weightKg: 12.5, reps: 9),
                 .uniform("Reverse Barbell Curl", sets: 3, weightKg: 12.5, reps: 9),
                 .uniform("Overhead Cable Triceps Extension", sets: 3, weightKg: 12.5, reps: 9),
                 .uniform("Dumbbell Triceps Kickback", sets: 3, weightKg: 12.5, reps: 9),
             ]),
-            RoutineEntry(name: "Rotating — Forearms & Abs", exercises: [
+            RoutineEntry(name: "Rotating: Forearms & Abs", exercises: [
                 .uniform("Dumbbell Wrist Curl", sets: 3, weightKg: nil, reps: 12),
                 .uniform("Reverse Barbell Curl", sets: 3, weightKg: 12.5, reps: 12),
                 .uniform("Cable Crunch", sets: 3, weightKg: nil, reps: 12),
@@ -202,7 +205,7 @@ extension RoutineTemplate {
     static let arnold = RoutineTemplate(
         id: "arnold",
         title: "Arnold Split",
-        summary: "Six days — chest/back, shoulders/arms, legs, twice each",
+        summary: "Six days, chest/back, shoulders/arms, legs, twice each",
         detail: """
         Chest and back trained together on the same day, then shoulders and \
         arms, then legs — and the whole thing run twice a week.
@@ -256,7 +259,7 @@ extension RoutineTemplate {
         daysPerWeek: "4 days",
         isRecommended: false,
         routines: [
-            RoutineEntry(name: "Upper A — Strength", exercises: [
+            RoutineEntry(name: "Upper A, Strength", exercises: [
                 .uniform("Barbell Bench Press", sets: 4, weightKg: nil, reps: 5),
                 .uniform("Barbell Bent-Over Row", sets: 4, weightKg: nil, reps: 6),
                 .uniform("Overhead Barbell Press", sets: 3, weightKg: nil, reps: 8),
@@ -264,14 +267,14 @@ extension RoutineTemplate {
                 .uniform("Barbell Curl", sets: 3, weightKg: nil, reps: 10),
                 .uniform("Cable Triceps Pushdown (Straight Bar)", sets: 3, weightKg: nil, reps: 10),
             ]),
-            RoutineEntry(name: "Lower A — Strength", exercises: [
+            RoutineEntry(name: "Lower A, Strength", exercises: [
                 .uniform("Barbell Back Squat", sets: 4, weightKg: nil, reps: 5),
                 .uniform("Romanian Deadlift", sets: 3, weightKg: nil, reps: 8),
                 .uniform("Leg Press", sets: 3, weightKg: nil, reps: 10),
                 .uniform("Seated Leg Curl", sets: 3, weightKg: nil, reps: 12),
                 .uniform("Standing Calf Raise Machine", sets: 4, weightKg: nil, reps: 15),
             ]),
-            RoutineEntry(name: "Upper B — Volume", exercises: [
+            RoutineEntry(name: "Upper B, Volume", exercises: [
                 .uniform("Incline Dumbbell Bench Press", sets: 4, weightKg: nil, reps: 10),
                 .uniform("Seated Cable Row", sets: 4, weightKg: nil, reps: 10),
                 .uniform("Dumbbell Shoulder Press", sets: 3, weightKg: nil, reps: 10),
@@ -279,7 +282,7 @@ extension RoutineTemplate {
                 .uniform("Dumbbell Lateral Raise", sets: 4, weightKg: nil, reps: 15),
                 .uniform("Hammer Curl", sets: 3, weightKg: nil, reps: 12),
             ]),
-            RoutineEntry(name: "Lower B — Volume", exercises: [
+            RoutineEntry(name: "Lower B, Volume", exercises: [
                 .uniform("Bulgarian Split Squat", sets: 3, weightKg: nil, reps: 10),
                 .uniform("Hack Squat Machine", sets: 3, weightKg: nil, reps: 12),
                 .uniform("Lying Leg Curl", sets: 4, weightKg: nil, reps: 12),

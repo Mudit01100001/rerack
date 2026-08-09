@@ -25,14 +25,14 @@ struct RoutineListView: View {
 
     var body: some View {
         if routines.isEmpty {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: DS.Space.xxs) {
                 Text("No workouts yet")
-                    .font(.subheadline.weight(.medium))
-                Text("Tap \"+ New Workout\" below to build your first one.")
-                    .font(.caption)
+                    .dsFont(DS.TypeScale.body, relativeTo: .subheadline, weight: .medium)
+                Text("Build one above, or start from a template.")
+                    .dsFont(DS.TypeScale.caption, relativeTo: .caption)
                     .foregroundStyle(.secondary)
             }
-            .padding(.vertical, 4)
+            .padding(.vertical, DS.Space.xxs)
         } else {
             ForEach(grouped, id: \.folderName) { group in
                 Section(group.folderName) {
@@ -46,12 +46,32 @@ struct RoutineListView: View {
                             onDelete: { modelContext.delete(routine) }
                         )
                     }
+                    // Drag to reorder within a split, so adding a Wednesday
+                    // legs day doesn't strand it at the bottom. Reordering is
+                    // scoped to the folder: `orderIndex` is global, so moving
+                    // within one group has to renumber only that group's rows
+                    // or it would silently reshuffle every other split.
+                    .onMove { offsets, destination in
+                        move(in: group.routines, from: offsets, to: destination)
+                    }
                 }
             }
             .sheet(item: $editingRoutine) { routine in
                 RoutineEditorView(routine: routine)
             }
         }
+    }
+
+    private func move(in group: [Routine], from offsets: IndexSet, to destination: Int) {
+        var reordered = group
+        reordered.move(fromOffsets: offsets, toOffset: destination)
+        // Renumber using only the indices this group already occupied, so the
+        // group keeps its position relative to every other folder.
+        let slots = group.map(\.orderIndex).sorted()
+        for (slot, routine) in zip(slots, reordered) {
+            routine.orderIndex = slot
+        }
+        try? modelContext.save()
     }
 
     /// PRD §7.7 / §9.3: creates the Workout + WorkoutExercise shells and

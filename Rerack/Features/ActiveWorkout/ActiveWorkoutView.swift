@@ -166,31 +166,33 @@ struct ActiveWorkoutView: View {
                     onFinish()
                 }
             }
-            .confirmationDialog(
-                "Discard this workout? This can't be undone.",
-                isPresented: $showingDiscardConfirm,
-                titleVisibility: .visible
-            ) {
-                Button("Discard Workout", role: .destructive) {
+            // `.alert`, not `.confirmationDialog`. A confirmation dialog
+            // anchors itself to the control that opened it and renders with a
+            // caret pointing back at the toolbar button, which reads as a
+            // tooltip rather than a decision and put a destructive action
+            // under an easily-mis-tapped popover. An alert is centred, modal,
+            // and gives Cancel equal weight.
+            .alert("Discard this workout?", isPresented: $showingDiscardConfirm) {
+                Button("Cancel", role: .cancel) {}
+                Button("Discard", role: .destructive) {
                     clearRest()
                     LiveActivityController.shared.end() // §7 row 29
                     onDiscard()
                 }
-                Button("Keep Going", role: .cancel) {}
+            } message: {
+                Text("Everything you've logged in this session will be deleted. This can't be undone.")
             }
             // Discard-empty guard: a "Finish" with nothing logged would
             // otherwise save an empty workout row forever cluttering history.
-            .confirmationDialog(
-                "This workout has no completed sets.",
-                isPresented: $showingEmptyFinishConfirm,
-                titleVisibility: .visible
-            ) {
-                Button("Discard Workout", role: .destructive) {
+            .alert("Nothing logged yet", isPresented: $showingEmptyFinishConfirm) {
+                Button("Keep Going", role: .cancel) {}
+                Button("Discard", role: .destructive) {
                     clearRest()
                     LiveActivityController.shared.end() // §7 row 29
                     onDiscard()
                 }
-                Button("Keep Going", role: .cancel) {}
+            } message: {
+                Text("This workout has no completed sets, so there's nothing to save.")
             }
             .alert("Superset?", isPresented: $isShowingSupersetPrompt) {
                 Button("Yes", action: confirmSupersetPrompt)

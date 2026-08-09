@@ -14,7 +14,7 @@ struct CardioTabView: View {
                     ContentUnavailableView(
                         "No cardio logged yet",
                         systemImage: "figure.run",
-                        description: Text("Log a session — treadmill, bike, run, whatever you did.")
+                        description: Text("Log a session, treadmill, bike, run, whatever you did.")
                     )
                 } else {
                     List {

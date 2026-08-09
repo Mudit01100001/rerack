@@ -15,7 +15,7 @@ struct RestCompleteBanner: View {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(.green)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Rest complete — \(RestNotificationScheduler.formattedClock(content.durationSeconds))")
+                    Text("Rest complete, \(RestNotificationScheduler.formattedClock(content.durationSeconds))")
                         .font(.subheadline.bold())
                         .foregroundStyle(.primary)
                     if let nextLine = content.nextLine {

@@ -181,7 +181,7 @@ enum ShareCardContentBuilder {
             let sets = (workoutExercise.sets ?? []).filter(\.isCompleted)
             guard !sets.isEmpty, let name = workoutExercise.exercise?.name else { return nil }
             let setVolume = sets.reduce(0) { $0 + $1.setVolumeKg }
-            return "\(name) — \(sets.count) × \(Int(setVolume)) kg"
+            return "\(name), \(sets.count) × \(Int(setVolume)) kg"
         }
 
         let match = AnimalLadder.match(volumeKg: volume)
