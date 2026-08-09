@@ -2,12 +2,18 @@ import SwiftUI
 import SwiftData
 import Photos
 
-/// PRD §9.5. The share carousel: paged card variants, then the export
-/// actions. Reached from the finish screen's `Share` button.
-struct ShareCardSheet: View {
+/// PRD §9.4/§9.5. Where a workout actually ends: the summary you earned,
+/// the confetti, and the share cards.
+///
+/// Deliberately after saving rather than beside it. Sharing used to sit next
+/// to Done as an equal choice, so the common path was leaving without ever
+/// seeing your own numbers. Now saving lands you here and sharing is a
+/// decision you make from a screen that's already showing you the session.
+struct WorkoutCompleteView: View {
     let workout: Workout
+    /// Dismisses the whole finish flow, not just this screen.
+    let onDone: () -> Void
 
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
     @State private var variant: ShareCardView.Variant = .animal
@@ -15,14 +21,27 @@ struct ShareCardSheet: View {
     @State private var renderedURL: URL?
     @State private var showingShareSheet = false
     @State private var saveMessage: String?
+    @State private var showingConfetti = false
 
     private var content: ShareCardContent {
         ShareCardContentBuilder.build(for: workout, context: modelContext)
     }
 
     var body: some View {
+        // Confetti sits outside the NavigationStack so the list/scroll
+        // clipping can't swallow it, which is what happened the first time.
+        ZStack(alignment: .top) {
+            navigationBody
+            ConfettiView(isActive: showingConfetti)
+                .allowsHitTesting(false)
+        }
+        .task { showingConfetti = true }
+    }
+
+    private var navigationBody: some View {
         NavigationStack {
-            VStack(spacing: 16) {
+            VStack(spacing: DS.Space.sm) {
+                summaryStrip
                 // The card lays out at a fixed point size so `ImageRenderer`
                 // gets identical geometry to what's previewed. Scaling to fit
                 // here — rather than making the card adapt to the sheet —
@@ -67,11 +86,12 @@ struct ShareCardSheet: View {
                 .padding(.bottom, 8)
             }
             .padding(.top, 8)
-            .navigationTitle("Share")
+            .navigationTitle("Workout Saved")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
+                    Button("Done") { onDone() }
+                        .fontWeight(.semibold)
                 }
             }
             .sheet(isPresented: $showingShareSheet) {
@@ -88,6 +108,52 @@ struct ShareCardSheet: View {
                 Text(saveMessage ?? "")
             }
         }
+    }
+
+    /// The numbers, above the cards. This is the part people actually came
+    /// for; the share card is optional and most sessions won't use it.
+    private var summaryStrip: some View {
+        VStack(spacing: DS.Space.xs) {
+            Text(content.workoutTitle)
+                .dsFont(DS.TypeScale.body, relativeTo: .headline, weight: .semibold)
+                .lineLimit(1)
+
+            HStack(spacing: 0) {
+                stat(content.durationFormatted, "Duration")
+                divider
+                stat("\(content.volumeKgFormatted) kg", "Volume")
+                divider
+                stat("\(content.setCount)", "Sets")
+                if content.prCount > 0 {
+                    divider
+                    stat("\(content.prCount)", content.prCount == 1 ? "Record" : "Records")
+                }
+            }
+        }
+        .padding(.vertical, DS.Space.sm)
+        .padding(.horizontal, DS.Space.md)
+        .frame(maxWidth: .infinity)
+        .dsCard(radius: DS.Radius.medium)
+        .padding(.horizontal, DS.Space.md)
+    }
+
+    private var divider: some View {
+        Rectangle()
+            .fill(Color.primary.opacity(0.10))
+            .frame(width: 0.5, height: 26)
+    }
+
+    private func stat(_ value: String, _ label: String) -> some View {
+        VStack(spacing: 1) {
+            Text(value)
+                .dsFont(DS.TypeScale.body, relativeTo: .headline, weight: .semibold, design: .rounded)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+            Text(label)
+                .dsFont(DS.TypeScale.caption2, relativeTo: .caption2)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private func actionButton(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
@@ -231,6 +297,9 @@ enum ShareCardContentBuilder {
     private static func formattedDuration(_ interval: TimeInterval) -> String {
         let total = max(0, Int(interval))
         let h = total / 3600, m = (total % 3600) / 60
-        return h > 0 ? "\(h)h \(m)m" : "\(m)m"
+        if h > 0 { return "\(h)h \(m)m" }
+        // Anything under a minute rendered as "0m", which reads as a bug
+        // rather than a short session.
+        return m > 0 ? "\(m)m" : "\(total)s"
     }
 }

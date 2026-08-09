@@ -110,7 +110,16 @@ struct WorkoutTabView: View {
     /// (`DS.Radius.medium`), so the curves stay parallel without redrawing the
     /// card itself.
     private var startRow: some View {
-        let innerRadius = DS.concentricRadius(outer: DS.Radius.medium, inset: cardInset)
+        // Outer R = Inner R + Padding, so Inner = Outer − Padding.
+        //
+        // Outer is the grouped-list section's own radius, which isn't exposed
+        // as an API — measured off a render at 26pt (iOS 26 rounds sections
+        // far harder than the ~10pt of earlier versions, so the old assumption
+        // was badly wrong). Padding is `cardInset` below.
+        //
+        //     26 − 8 = 18
+        let outerRadius: CGFloat = 26
+        let innerRadius = outerRadius - cardInset
 
         return HStack(spacing: cardInset) {
             Button {

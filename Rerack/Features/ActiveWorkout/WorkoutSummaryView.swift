@@ -81,17 +81,12 @@ struct WorkoutSummaryView: View {
     /// breakdown behind a disclosure instead of always-on. A finish screen
     /// you have to scroll to reach "Done" on is a finish screen that gets
     /// dismissed without its optional fields ever being filled.
+    /// This screen is the *input* step: notes, photo, gym, tags. The
+    /// celebration and the summary belong to what comes after saving, not
+    /// here — confetti over a form you're still filling in rushes you past
+    /// the fields, and the payoff lands better once the work is actually
+    /// committed.
     var body: some View {
-        // Confetti sits *outside* the NavigationStack: as an overlay on the
-        // List it was clipped to the list's bounds and never appeared.
-        ZStack(alignment: .top) {
-            content
-            ConfettiView(isActive: showingConfetti)
-                .allowsHitTesting(false)
-        }
-    }
-
-    private var content: some View {
         NavigationStack {
             List {
                 Section {
@@ -143,12 +138,11 @@ struct WorkoutSummaryView: View {
                 photoData = data
                 workout.photoFilename = PhotoStorage.save(data)
             }
-            .sheet(isPresented: $showingShareCards) {
-                ShareCardSheet(workout: workout)
-            }
-            .task {
-                // One burst on arrival, not on every re-render.
-                showingConfetti = true
+            // Full screen, not a sheet: saving is the end of the session, so
+            // what follows should feel like arriving somewhere rather than a
+            // panel over unfinished business.
+            .fullScreenCover(isPresented: $showingShareCards) {
+                WorkoutCompleteView(workout: workout, onDone: onDone)
             }
             .onAppear {
                 if let filename = workout.photoFilename {
@@ -377,26 +371,19 @@ struct WorkoutSummaryView: View {
         .font(.subheadline)
     }
 
+    /// One action. Sharing used to sit beside Done as an equal choice, which
+    /// meant you could leave without ever seeing your own summary. Saving now
+    /// leads into it, and sharing is a choice you make from there.
     private var actionButtons: some View {
-        HStack(spacing: 12) {
-            Button {
-                showingShareCards = true
-            } label: {
-                Label("Share", systemImage: "square.and.arrow.up")
-                    .frame(maxWidth: .infinity, minHeight: 40)
-            }
-            .buttonStyle(.bordered)
-
-            Button {
-                try? modelContext.save()
-                onDone()
-            } label: {
-                Text("Done")
-                    .fontWeight(.semibold)
-                    .frame(maxWidth: .infinity, minHeight: 40)
-            }
-            .buttonStyle(.borderedProminent)
+        Button {
+            try? modelContext.save()
+            showingShareCards = true
+        } label: {
+            Text("Save Workout")
+                .fontWeight(.semibold)
+                .frame(maxWidth: .infinity, minHeight: 44)
         }
+        .buttonStyle(.borderedProminent)
         .listRowBackground(Color.clear)
     }
 }
