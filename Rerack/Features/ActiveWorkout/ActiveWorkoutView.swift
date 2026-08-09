@@ -11,6 +11,9 @@ struct ActiveWorkoutView: View {
     @Bindable var workout: Workout
     let onFinish: () -> Void
     let onDiscard: () -> Void
+    /// Parks the session and returns to the rest of the app. The workout
+    /// stays live; the banner is the way back.
+    let onMinimize: () -> Void
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
@@ -137,15 +140,33 @@ struct ActiveWorkoutView: View {
             // Grouped grey behind the cards — without it the cards are the
             // same colour as the page and the grouping does nothing.
             .background(Color(.systemGroupedBackground))
+            // Swipe down from anywhere to park the session, the same gesture
+            // a sheet would give. `minimumDistance` keeps it from competing
+            // with the scroll view, and only a downward drag counts so
+            // scrolling up never dismisses by accident.
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 40)
+                    .onEnded { value in
+                        let isDownward = value.translation.height > 90
+                        let isMostlyVertical = abs(value.translation.height) > abs(value.translation.width) * 2
+                        if isDownward, isMostlyVertical { onMinimize() }
+                    }
+            )
             .navigationTitle(workout.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
+                    // Minimise, not discard. Leaving a live session used to
+                    // mean destroying it, which made "step away for a second"
+                    // and "throw away the last 40 minutes" the same gesture.
+                    // Discard now lives at the bottom of the screen, where
+                    // you have to mean it.
                     Button {
-                        showingDiscardConfirm = true
+                        onMinimize()
                     } label: {
-                        Image(systemName: "xmark")
+                        Image(systemName: "chevron.down")
                     }
+                    .accessibilityLabel("Minimise workout")
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Finish", action: attemptFinish)

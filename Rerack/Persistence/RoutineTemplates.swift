@@ -70,14 +70,14 @@ struct RoutineTemplate: Identifiable {
 // MARK: - The bundled set
 
 extension RoutineTemplate {
-    static let all: [RoutineTemplate] = [.pushPullLegs, .bodyPartSplit, .arnold, .upperLower, .fullBody]
+    static let all: [RoutineTemplate] = [.pushPullLegs, .pplAdvanced, .arnold, .upperLower, .fullBody]
 
     /// A five-day upper-focused split, shipped with real working weights
     /// already filled in so the first session has targets rather than empty
     /// rows. Legs are deliberately absent — see the detail copy.
-    static let bodyPartSplit = RoutineTemplate(
-        id: "body-part-split",
-        title: "Body Part Split",
+    static let pplAdvanced = RoutineTemplate(
+        id: "ppl-advanced",
+        title: "PPL (Advanced)",
         summary: "Five days, one or two muscle groups each, upper body only",
         detail: """
         One or two muscle groups per day, five days a week, with working \

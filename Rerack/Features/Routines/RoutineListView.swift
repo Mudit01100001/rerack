@@ -5,60 +5,43 @@ import SwiftData
 /// otherwise. Meant to be embedded directly inside the `List` in
 /// `WorkoutTabView` — its body is `Section`s, not a standalone scroll view.
 struct RoutineListView: View {
+    /// Which split to show. `nil` renders the routines that aren't in any
+    /// folder — the picker in `WorkoutTabView` owns the choice, so this view
+    /// stays a dumb list rather than holding a second copy of that state.
+    let folderName: String?
+
     @Query(sort: \Routine.orderIndex) private var routines: [Routine]
     @Environment(\.modelContext) private var modelContext
     @Environment(ActiveWorkoutCoordinator.self) private var coordinator
 
     @State private var editingRoutine: Routine?
 
-    private var grouped: [(folderName: String, routines: [Routine])] {
-        let groups = Dictionary(grouping: routines) { $0.folder?.name ?? "" }
-        let orderedKeys = groups.keys.sorted { lhs, rhs in
-            if lhs.isEmpty { return false }
-            if rhs.isEmpty { return true }
-            return lhs.localizedCaseInsensitiveCompare(rhs) == .orderedAscending
-        }
-        return orderedKeys.map { key in
-            (key.isEmpty ? "No Folder" : key, groups[key]!.sorted { $0.orderIndex < $1.orderIndex })
-        }
+    private var visible: [Routine] {
+        routines
+            .filter { folderName == nil ? $0.folder == nil : $0.folder?.name == folderName }
+            .sorted { $0.orderIndex < $1.orderIndex }
     }
 
     var body: some View {
-        if routines.isEmpty {
-            VStack(alignment: .leading, spacing: DS.Space.xxs) {
-                Text("No workouts yet")
-                    .dsFont(DS.TypeScale.body, relativeTo: .subheadline, weight: .medium)
-                Text("Build one above, or start from a template.")
-                    .dsFont(DS.TypeScale.caption, relativeTo: .caption)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.vertical, DS.Space.xxs)
-        } else {
-            ForEach(grouped, id: \.folderName) { group in
-                Section(group.folderName) {
-                    ForEach(group.routines) { routine in
-                        RoutineCard(
-                            routine: routine,
-                            isStartDisabled: coordinator.liveWorkout != nil,
-                            onStart: { start(routine) },
-                            onEdit: { editingRoutine = routine },
-                            onDuplicate: { duplicate(routine) },
-                            onDelete: { modelContext.delete(routine) }
-                        )
-                    }
-                    // Drag to reorder within a split, so adding a Wednesday
-                    // legs day doesn't strand it at the bottom. Reordering is
-                    // scoped to the folder: `orderIndex` is global, so moving
-                    // within one group has to renumber only that group's rows
-                    // or it would silently reshuffle every other split.
-                    .onMove { offsets, destination in
-                        move(in: group.routines, from: offsets, to: destination)
-                    }
-                }
-            }
-            .sheet(item: $editingRoutine) { routine in
-                RoutineEditorView(routine: routine)
-            }
+        ForEach(visible) { routine in
+            RoutineCard(
+                routine: routine,
+                isStartDisabled: coordinator.liveWorkout != nil,
+                onStart: { start(routine) },
+                onEdit: { editingRoutine = routine },
+                onDuplicate: { duplicate(routine) },
+                onDelete: { modelContext.delete(routine) }
+            )
+        }
+        // Drag to reorder within a split, so adding a Wednesday legs day
+        // doesn't strand it at the bottom. Reordering reuses only the
+        // indices this group already occupied, since orderIndex is global
+        // and a naive renumber would reshuffle every other split.
+        .onMove { offsets, destination in
+            move(in: visible, from: offsets, to: destination)
+        }
+        .sheet(item: $editingRoutine) { routine in
+            RoutineEditorView(routine: routine)
         }
     }
 

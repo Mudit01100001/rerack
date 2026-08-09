@@ -33,11 +33,7 @@ struct RootTabView: View {
         }
         .environment(coordinator)
         .preferredColorScheme(appearanceMode.colorScheme)
-        .safeAreaInset(edge: .bottom) {
-            if coordinator.liveWorkout != nil && !coordinator.isPresented {
-                ActiveWorkoutBanner(coordinator: coordinator)
-            }
-        }
+        .modifier(LiveWorkoutAccessory(coordinator: coordinator))
         .fullScreenCover(
             isPresented: Binding(
                 get: { coordinator.isPresented },
@@ -51,7 +47,10 @@ struct RootTabView: View {
                     onDiscard: {
                         modelContext.delete(workout)
                         coordinator.clear()
-                    }
+                    },
+                    // Only dismisses the cover. The workout stays live and
+                    // the banner reappears, so nothing is lost.
+                    onMinimize: { coordinator.isPresented = false }
                 )
             }
         }
@@ -79,6 +78,40 @@ struct RootTabView: View {
         let descriptor = FetchDescriptor<Workout>(predicate: #Predicate { $0.endedAt == nil })
         if let live = try? modelContext.fetch(descriptor).first {
             coordinator.present(live)
+        }
+    }
+}
+
+/// Parks the live-workout pill against the tab bar.
+///
+/// iOS 26 has an API for exactly this shape (the slot Apple Music's
+/// now-playing bar sits in), and it docks the pill *above* the tab bar
+/// instead of over it. `.safeAreaInset` doesn't: with the floating tab bar it
+/// lays the pill inside the content area, where it covered the tab labels.
+/// Older versions keep the inset and add clearance by hand.
+private struct LiveWorkoutAccessory: ViewModifier {
+    let coordinator: ActiveWorkoutCoordinator
+
+    private var isShowing: Bool {
+        coordinator.liveWorkout != nil && !coordinator.isPresented
+    }
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.tabViewBottomAccessory {
+                if isShowing {
+                    ActiveWorkoutBanner(coordinator: coordinator)
+                }
+            }
+        } else {
+            content.safeAreaInset(edge: .bottom) {
+                if isShowing {
+                    ActiveWorkoutBanner(coordinator: coordinator)
+                        // Clears the floating tab bar, which the inset
+                        // otherwise lets the pill sit on top of.
+                        .padding(.bottom, DS.Space.xl + DS.Space.lg)
+                }
+            }
         }
     }
 }
