@@ -50,6 +50,11 @@ targets:
         # §9.5 "Save to Photos" on a share card. Add-only: the app writes
         # cards out and never reads the library, so it asks for exactly that.
         NSPhotoLibraryAddUsageDescription: "Saves your workout share cards to your photo library."
+        # §9.5 Instagram Stories hand-off. Without this, canOpenURL returns
+        # false even when Instagram is installed, so the button would never
+        # appear on a device that can use it.
+        LSApplicationQueriesSchemes:
+          - instagram-stories
         # Answers the App Store Connect export-compliance question at
         # upload time instead of on the web every single build: the app
         # makes zero network calls and has no custom encryption anywhere

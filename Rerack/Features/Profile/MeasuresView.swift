@@ -122,6 +122,16 @@ struct MeasuresView: View {
                 let metric = BodyMetric(type: metricType, value: value, date: date, source: .manual)
                 modelContext.insert(metric)
                 try? modelContext.save()
+                // Push it back to Health so a reading typed here isn't
+                // stranded in this app — same round trip a scale app gives.
+                Task {
+                    switch metricType {
+                    case .bodyweight:
+                        await HealthKitManager.writeBodyweight(kg: value, date: date)
+                    case .bodyFatPercentage:
+                        await HealthKitManager.writeBodyFatPercentage(value, date: date)
+                    }
+                }
             }
         }
     }

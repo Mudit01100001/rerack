@@ -728,7 +728,13 @@ struct ActiveWorkoutView: View {
             // toward reality (§9.3), so the surplus targets go with it
             // rather than lingering as a stale plan for sets that didn't
             // happen this time.
-            if templates.count > completed.count {
+            //
+            // Only when the exercise was actually performed. Zero completed
+            // sets means "skipped today," not "this exercise has no sets" —
+            // trimming there deleted *every* target, so skipping one movement
+            // once permanently wiped its plan (and silently gutted an
+            // imported template). The exercise keeps its targets untouched.
+            if !completed.isEmpty, templates.count > completed.count {
                 for extra in templates[completed.count...] {
                     modelContext.delete(extra)
                 }

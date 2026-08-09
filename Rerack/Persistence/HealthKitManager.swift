@@ -25,7 +25,10 @@ enum HealthKitManager {
     static func requestAuthorization() async -> Bool {
         guard isAvailable else { return false }
         let readTypes: Set<HKObjectType> = [bodyMassType, bodyFatType]
-        let writeTypes: Set<HKSampleType> = [HKObjectType.workoutType()]
+        // Body metrics are read *and* written: a reading typed into Measures
+        // should reach Health like one typed into any scale app, so the two
+        // don't drift into separate half-histories.
+        let writeTypes: Set<HKSampleType> = [HKObjectType.workoutType(), bodyMassType, bodyFatType]
         do {
             try await store.requestAuthorization(toShare: writeTypes, read: readTypes)
             return true
@@ -61,17 +64,58 @@ enum HealthKitManager {
     /// PRD §10.2 "Write workout sessions." Fire-and-forget from the caller's
     /// point of view — the workout is already saved locally regardless of
     /// whether this succeeds, so a failure here is never surfaced to the user.
-    static func writeWorkout(_ workout: Workout) async {
-        guard isAvailable, let endedAt = workout.endedAt else { return }
+    ///
+    /// Deliberately writes **no energy-burned sample.** With no heart-rate
+    /// source, any calorie figure would be a guess, and a guess written here
+    /// doesn't stay here: Health hands it to every other app as fact and
+    /// there's no way to mark it as estimated. The Exercise ring still credits
+    /// the session's duration; the Move ring won't move, which is the honest
+    /// outcome for data we don't have.
+    @discardableResult
+    static func writeWorkout(_ workout: Workout) async -> Bool {
+        guard isAvailable, let endedAt = workout.endedAt else { return false }
         let configuration = HKWorkoutConfiguration()
         configuration.activityType = .traditionalStrengthTraining
         do {
             let builder = HKWorkoutBuilder(healthStore: store, configuration: configuration, device: .local())
             try await builder.beginCollection(at: workout.startedAt)
+            if let title = workout.routineNameSnapshot ?? Optional(workout.title), !title.isEmpty {
+                try? await builder.addMetadata([HKMetadataKeyWorkoutBrandName: title])
+            }
             try await builder.endCollection(at: endedAt)
             try await builder.finishWorkout()
+            return true
         } catch {
-            // Silent fallback — see type doc.
+            return false // Silent fallback — see type doc.
+        }
+    }
+
+    // MARK: - Writing body metrics
+
+    /// Writes a bodyweight reading back to Health. Returns whether it landed,
+    /// so the caller can record provenance rather than claiming a sync that
+    /// silently failed.
+    @discardableResult
+    static func writeBodyweight(kg: Double, date: Date = Date()) async -> Bool {
+        await write(type: bodyMassType, quantity: HKQuantity(unit: .gramUnit(with: .kilo), doubleValue: kg), date: date)
+    }
+
+    @discardableResult
+    static func writeBodyFatPercentage(_ percent: Double, date: Date = Date()) async -> Bool {
+        // HealthKit stores body fat as a 0…1 fraction; the app works in
+        // percent everywhere else, so the conversion belongs here rather than
+        // at each call site.
+        await write(type: bodyFatType, quantity: HKQuantity(unit: .percent(), doubleValue: percent / 100), date: date)
+    }
+
+    private static func write(type: HKQuantityType, quantity: HKQuantity, date: Date) async -> Bool {
+        guard isAvailable else { return false }
+        let sample = HKQuantitySample(type: type, quantity: quantity, start: date, end: date)
+        do {
+            try await store.save(sample)
+            return true
+        } catch {
+            return false
         }
     }
 

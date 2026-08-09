@@ -52,10 +52,16 @@ struct ShareCardSheet: View {
                 .pickerStyle(.segmented)
                 .padding(.horizontal)
 
-                HStack(spacing: 12) {
+                HStack(spacing: 10) {
+                    // Only offered when Instagram is actually installed —
+                    // a button that opens the App Store instead of doing the
+                    // thing it names is worse than not showing it.
+                    if InstagramStoryShare.isAvailable {
+                        actionButton("Stories", systemImage: "camera.circle") { shareToInstagram() }
+                    }
                     actionButton("Save", systemImage: "square.and.arrow.down") { saveToPhotos() }
-                    actionButton("Copy Text", systemImage: "doc.on.doc") { copyText() }
-                    actionButton("Share", systemImage: "square.and.arrow.up") { shareImage() }
+                    actionButton("Copy", systemImage: "doc.on.doc") { copyText() }
+                    actionButton("More", systemImage: "square.and.arrow.up") { shareImage() }
                 }
                 .padding(.horizontal)
                 .padding(.bottom, 8)
@@ -113,6 +119,20 @@ struct ShareCardSheet: View {
     private func shareImage() {
         renderedURL = render()
         showingShareSheet = renderedURL != nil
+    }
+
+    /// Hands the card to Instagram's story composer. Nothing is posted — the
+    /// user still composes and shares inside Instagram — so this needs no
+    /// confirmation beyond the tap that started it.
+    private func shareToInstagram() {
+        // Stories are 1080×1920; handing over a square card would letterbox.
+        let previousSize = size
+        size = .story
+        defer { size = previousSize }
+        guard let url = render(), let image = UIImage(contentsOfFile: url.path) else { return }
+        if !InstagramStoryShare.share(backgroundImage: image) {
+            saveMessage = "Couldn't open Instagram."
+        }
     }
 
     /// Requests add-only Photos access — the app never reads the library, so

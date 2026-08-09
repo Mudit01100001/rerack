@@ -18,6 +18,7 @@ struct WorkoutSummaryView: View {
     @State private var photoData: Data?
     @State private var newTagText = ""
     @State private var showingShareCards = false
+    @State private var showingConfetti = false
 
     private var sortedExercises: [WorkoutExercise] {
         (workout.exercises ?? []).sorted { $0.orderIndex < $1.orderIndex }
@@ -81,6 +82,16 @@ struct WorkoutSummaryView: View {
     /// you have to scroll to reach "Done" on is a finish screen that gets
     /// dismissed without its optional fields ever being filled.
     var body: some View {
+        // Confetti sits *outside* the NavigationStack: as an overlay on the
+        // List it was clipped to the list's bounds and never appeared.
+        ZStack(alignment: .top) {
+            content
+            ConfettiView(isActive: showingConfetti)
+                .allowsHitTesting(false)
+        }
+    }
+
+    private var content: some View {
         NavigationStack {
             List {
                 Section {
@@ -134,6 +145,10 @@ struct WorkoutSummaryView: View {
             }
             .sheet(isPresented: $showingShareCards) {
                 ShareCardSheet(workout: workout)
+            }
+            .task {
+                // One burst on arrival, not on every re-render.
+                showingConfetti = true
             }
             .onAppear {
                 if let filename = workout.photoFilename {
