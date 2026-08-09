@@ -116,7 +116,7 @@ struct WorkoutTabView: View {
             Button {
                 createRoutine()
             } label: {
-                Label("New Routine", systemImage: "square.and.pencil")
+                Label("New Workout", systemImage: "square.and.pencil")
                     .dsFont(DS.TypeScale.caption, relativeTo: .subheadline, weight: .semibold)
                     .foregroundStyle(Color.accentColor)
                     .frame(maxWidth: .infinity, minHeight: 44)
@@ -256,7 +256,7 @@ private struct NewSplitSheet: View {
 
                 Section {
                     NavigationLink {
-                        TemplateLibraryView()
+                        TemplateLibraryView(isPushed: true)
                     } label: {
                         Label("Start from a Template", systemImage: "square.stack.3d.up")
                     }

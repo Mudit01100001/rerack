@@ -5,6 +5,10 @@ import SwiftData
 /// from the Workout tab, and the answer to a first launch showing an empty
 /// routine list.
 struct TemplateLibraryView: View {
+    /// True when reached by a `NavigationLink` (the New Split flow) rather
+    /// than presented as its own sheet.
+    var isPushed: Bool = false
+
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
@@ -27,6 +31,22 @@ struct TemplateLibraryView: View {
         }
         .navigationTitle("Templates")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            // Presented as a sheet from the Workout tab and pushed inside the
+            // New Split flow. The close button only belongs in the first case
+            // — pushed views already have a back button, and showing both
+            // would give two different ways out that mean different things.
+            if !isPushed {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .accessibilityLabel("Close")
+                }
+            }
+        }
         .sheet(item: $selected) { template in
             TemplateDetailView(template: template) { dismiss() }
         }

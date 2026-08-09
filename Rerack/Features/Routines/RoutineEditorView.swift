@@ -56,7 +56,7 @@ struct RoutineEditorView: View {
                     Toggle("Track as progress", isOn: $routine.trackAsProgress)
                     Toggle("Update target values on finish", isOn: $routine.updateValuesOnFinish)
                 } footer: {
-                    Text("Both default on. Turning off \"Track as progress\" keeps this routine's sessions in your history and export, but out of graphs and PRs, useful for deload weeks. See PRD §9.3.")
+                    Text("Both default on. Turning off \"Track as progress\" keeps this workout's sessions in your history and export, but out of graphs and PRs, useful for deload weeks.")
                 }
 
                 Section("Exercises") {
