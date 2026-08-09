@@ -37,6 +37,17 @@ final class UserProfile {
     /// at set-completion time, so flipping it never rewrites past sets.
     var useBodyweightInVolume: Bool = true
 
+    /// The training split currently being followed. Every workout started
+    /// from here on snapshots this onto `Workout.splitSnapshot`, so changing
+    /// it — which is expected to happen week to week, depending on how hard a
+    /// week is going — re-labels future sessions without touching past ones.
+    ///
+    /// A plain string, not a relationship: a split can be a folder you
+    /// imported, one you built, or something you're following out of a book,
+    /// and forcing all three through one model would be modelling the app's
+    /// convenience rather than the user's reality.
+    var activeSplitName: String?
+
     var hasCompletedOnboarding: Bool = false
     var createdAt: Date = Date()
 

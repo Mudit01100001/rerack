@@ -119,12 +119,12 @@ struct ActiveWorkoutView: View {
                         showingAddExercise = true
                     } label: {
                         Label("Add Exercise", systemImage: "plus")
-                            .font(.subheadline.weight(.medium))
-                            .frame(maxWidth: .infinity, minHeight: 48)
+                            .dsFont(DS.TypeScale.body, relativeTo: .subheadline, weight: .medium)
+                            .frame(maxWidth: .infinity, minHeight: 50)
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(Color.accentColor)
-                    .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
+                    .dsCard()
                     .padding(.horizontal)
 
                     workoutActions
@@ -259,26 +259,40 @@ struct ActiveWorkoutView: View {
     /// you have to deliberately scroll past your whole workout to reach it —
     /// never adjacent to the tick you're tapping forty times a session.
     private var workoutActions: some View {
-        HStack(spacing: 10) {
-            Button {
+        HStack(spacing: DS.Space.sm) {
+            actionChip("Settings", systemImage: "gearshape", tint: .secondary) {
                 showingWorkoutSettings = true
-            } label: {
-                Label("Settings", systemImage: "gearshape")
-                    .font(.subheadline)
-                    .frame(maxWidth: .infinity, minHeight: 36)
             }
-            .buttonStyle(.bordered)
-
-            Button(role: .destructive) {
+            actionChip("Discard", systemImage: "trash", tint: .red) {
                 showingDiscardConfirm = true
-            } label: {
-                Label("Discard", systemImage: "trash")
-                    .font(.subheadline)
-                    .frame(maxWidth: .infinity, minHeight: 36)
             }
-            .buttonStyle(.bordered)
-            .tint(.red)
         }
+    }
+
+    /// Hand-rolled rather than `.buttonStyle(.bordered)`: the system style
+    /// picks its own corner radius, which is what made these two disagree
+    /// with the cards above them.
+    private func actionChip(
+        _ title: String,
+        systemImage: String,
+        tint: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .dsFont(DS.TypeScale.caption, relativeTo: .subheadline, weight: .medium)
+                .foregroundStyle(tint)
+                .frame(maxWidth: .infinity, minHeight: 40)
+                .background(
+                    Color(.secondarySystemGroupedBackground),
+                    in: .rect(cornerRadius: DS.Radius.medium, style: .continuous)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: DS.Radius.medium, style: .continuous)
+                        .strokeBorder(tint.opacity(0.18), lineWidth: 0.5)
+                )
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Exercise cards

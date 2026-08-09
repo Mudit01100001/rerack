@@ -51,7 +51,7 @@ enum CSVExporter {
 
     private static func workoutHeader(topTags: [String]) -> [String] {
         var columns = [
-            "workout_id", "workout_title", "routine_id", "routine_name", "date", "day_of_week",
+            "workout_id", "workout_title", "routine_id", "routine_name", "split", "date", "day_of_week",
             "week_of_year", "start_time", "end_time", "duration_sec", "location", "tags",
         ]
         columns += topTags.map { "tag_\(sanitizedColumnName($0))" }
@@ -139,6 +139,7 @@ enum CSVExporter {
                 workout.title,
                 workout.routine?.id.uuidString ?? "",
                 workout.routineNameSnapshot ?? "",
+                workout.splitSnapshot ?? "",
                 dateOnly(workout.startedAt),
                 dayOfWeek(workout.startedAt),
                 isoWeek(workout.startedAt),

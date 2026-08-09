@@ -40,6 +40,16 @@ final class Workout {
     /// (PRD §15) even though `routine` below goes nil via `.nullify`.
     var routineNameSnapshot: String?
 
+    /// Which training split was active when this session was performed —
+    /// snapshotted, not looked up, for the same reason as the routine name:
+    /// switching splits next week must not rewrite what last week says.
+    ///
+    /// This is what makes the CSV's `split` column worth anything. Without a
+    /// per-workout snapshot you can only ever filter by the split you're on
+    /// *now*, which is useless for "how did volume differ across the two
+    /// programmes I ran this quarter."
+    var splitSnapshot: String?
+
     /// M6 §9.2. The absolute instant the current rest period ends, or `nil`
     /// when nothing is resting. Persisted rather than held as view `@State`
     /// because three separate consumers must agree on it: the in-app bar, the

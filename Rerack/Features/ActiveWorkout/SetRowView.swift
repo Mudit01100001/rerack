@@ -39,66 +39,52 @@ struct SetRowView: View {
         return ghost != nil || dropPrefillWeightKg != nil || existingSet != nil
     }
 
+    /// Column widths are shared with `ExerciseCardView.columnHeaders` — the
+    /// header row and every set row read from the same numbers, so they can't
+    /// drift out of alignment.
     var body: some View {
-        HStack(spacing: 8) {
-            // §7.9: drop rows are indented and tethered to the parent with a
-            // small connector glyph, marked "D" instead of a set number.
+        HStack(spacing: DS.Space.xs) {
+            // §7.9: drop rows are indented and marked "D" instead of a number.
             Group {
                 if isDrop {
-                    Image(systemName: "arrow.turn.down.right")
-                        .font(.caption2)
+                    HStack(spacing: 2) {
+                        Image(systemName: "arrow.turn.down.right")
+                            .dsFont(DS.TypeScale.caption2, relativeTo: .caption2)
+                        Text("D")
+                            .dsFont(DS.TypeScale.caption, relativeTo: .caption, weight: .bold)
+                    }
                 } else {
                     Text("\(orderIndex + 1)")
-                        .font(.subheadline)
+                        .dsFont(DS.TypeScale.caption, relativeTo: .subheadline, weight: .medium)
                 }
             }
-            .frame(width: 20)
+            .frame(width: 26, alignment: .leading)
             .foregroundStyle(.secondary)
-            .padding(.leading, isDrop ? 16 : 0)
-
-            if isDrop {
-                Text("D")
-                    .font(.caption.bold())
-                    .foregroundStyle(.secondary)
-            }
 
             Group {
                 if let ghost {
-                    Text("\(formatted(ghost.weightKg)) × \(ghost.reps)")
+                    Text("\(formatted(ghost.weightKg))×\(ghost.reps)")
                 } else {
                     Text("—")
                 }
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .frame(width: 60, alignment: .leading)
+            .dsFont(DS.TypeScale.caption, relativeTo: .caption, design: .rounded)
+            .foregroundStyle(.tertiary)
+            .frame(width: 66, alignment: .leading)
 
-            TextField("kg", text: $weightText)
-                .keyboardType(.decimalPad)
-                .multilineTextAlignment(.center)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 58)
-                .foregroundStyle(showsAsGhost ? .secondary : .primary)
-                .onChange(of: weightText) { _, _ in hasEdited = true }
+            entryField(text: $weightText, placeholder: "kg", width: 58, keyboard: .decimalPad)
+            entryField(text: $repsText, placeholder: "reps", width: 48, keyboard: .numberPad)
 
-            Text("×").foregroundStyle(.secondary)
-
-            TextField("reps", text: $repsText)
-                .keyboardType(.numberPad)
-                .multilineTextAlignment(.center)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 48)
-                .foregroundStyle(showsAsGhost ? .secondary : .primary)
-                .onChange(of: repsText) { _, _ in hasEdited = true }
-
-            Spacer(minLength: 4)
+            Spacer(minLength: 0)
 
             Button(action: toggle) {
                 Image(systemName: isCompleted ? "checkmark.circle.fill" : "circle")
-                    .imageScale(.large)
-                    .foregroundStyle(isCompleted ? Color.green : Color.secondary)
+                    .dsFont(DS.TypeScale.heading, relativeTo: .title3)
+                    .foregroundStyle(isCompleted ? Color.green : Color.secondary.opacity(0.6))
             }
             .buttonStyle(.plain)
+            .frame(width: 30)
+            .accessibilityLabel(isCompleted ? "Completed. Tap to undo." : "Log this set")
         }
         .swipeActions(edge: .trailing) {
             if existingSet != nil {
@@ -119,6 +105,32 @@ struct SetRowView: View {
         .onAppear(perform: populate)
         .onChange(of: existingSet?.id) { _, _ in populate() }
         .onChange(of: existingSet?.isCompleted) { _, _ in populate() }
+    }
+
+    /// Editable fields carry a filled background and a border; static text
+    /// doesn't. That's the app-wide rule now — if you can change it, it looks
+    /// like a control.
+    private func entryField(
+        text: Binding<String>,
+        placeholder: String,
+        width: CGFloat,
+        keyboard: UIKeyboardType
+    ) -> some View {
+        TextField(placeholder, text: text)
+            .keyboardType(keyboard)
+            .multilineTextAlignment(.center)
+            .dsFont(DS.TypeScale.body, relativeTo: .body, weight: .medium, design: .rounded)
+            .foregroundStyle(showsAsGhost ? .secondary : .primary)
+            .frame(width: width, height: 34)
+            .background(
+                Color(.secondarySystemGroupedBackground),
+                in: .rect(cornerRadius: DS.Radius.small, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DS.Radius.small, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.5)
+            )
+            .onChange(of: text.wrappedValue) { _, _ in hasEdited = true }
     }
 
     private func populate() {

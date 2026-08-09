@@ -8,7 +8,12 @@ struct WorkoutTabView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(ActiveWorkoutCoordinator.self) private var coordinator
 
+    @Query private var profiles: [UserProfile]
     @State private var newRoutine: Routine?
+
+    private var activeSplitName: String? {
+        profiles.first?.activeSplitName.flatMap { $0.isEmpty ? nil : $0 }
+    }
 
     var body: some View {
         NavigationStack {
@@ -36,6 +41,17 @@ struct WorkoutTabView: View {
                         TemplateLibraryView()
                     } label: {
                         Label("Start from a Template", systemImage: "square.stack.3d.up")
+                    }
+                    NavigationLink {
+                        SplitSelectorView()
+                    } label: {
+                        HStack {
+                            Label("Current Split", systemImage: "calendar.badge.clock")
+                            Spacer()
+                            Text(activeSplitName ?? "Not set")
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
                     }
                 } footer: {
                     if routines.isEmpty {

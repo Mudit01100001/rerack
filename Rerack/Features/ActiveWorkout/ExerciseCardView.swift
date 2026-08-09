@@ -87,42 +87,77 @@ struct ExerciseCardView: View {
     // MARK: - Card header
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: DS.Space.xs) {
+            HStack(spacing: DS.Space.xs) {
                 if let supersetLabel {
                     Text(supersetLabel)
-                        .font(.caption.bold())
+                        .dsFont(DS.TypeScale.caption2, relativeTo: .caption2, weight: .bold)
                         .foregroundStyle(.white)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
+                        .padding(.horizontal, DS.Space.xs)
+                        .padding(.vertical, 3)
                         .background(Color.accentColor, in: Capsule())
                 }
                 Button(action: onShowDetail) {
                     Text(workoutExercise.exercise?.name ?? "Exercise")
-                        .font(.headline)
+                        .dsFont(DS.TypeScale.heading, relativeTo: .headline, weight: .semibold)
                         .foregroundStyle(.primary)
                         .multilineTextAlignment(.leading)
                 }
                 .buttonStyle(.plain)
-                Spacer(minLength: 4)
+                Spacer(minLength: DS.Space.xxs)
                 menu
             }
 
-            // Rest setting sits directly under the name: it's per-exercise
-            // config, so it belongs to this card's header rather than being
-            // buried one level down in the `···` menu.
+            // Rest config belongs to this exercise, so it sits in the card's
+            // header. Rendered as a tinted, chevroned chip rather than grey
+            // caption text: previously it read as a static label and nobody
+            // could tell it was tappable.
             Button {
                 showingRestPicker = true
             } label: {
-                Label(RestNotificationScheduler.formattedClock(currentRestSeconds), systemImage: "timer")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: DS.Space.xxs) {
+                    Image(systemName: "timer")
+                    Text(RestNotificationScheduler.formattedClock(currentRestSeconds))
+                    Image(systemName: "chevron.down")
+                        .dsFont(DS.TypeScale.caption2, relativeTo: .caption2, weight: .semibold)
+                }
+                .dsFont(DS.TypeScale.caption, relativeTo: .caption, weight: .medium)
+                .foregroundStyle(Color.accentColor)
+                .padding(.horizontal, DS.Space.xs)
+                .padding(.vertical, 5)
+                .background(Color.accentColor.opacity(0.12), in: Capsule())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Rest timer, \(RestNotificationScheduler.formattedClock(currentRestSeconds)). Tap to change.")
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 12)
-        .padding(.bottom, 10)
+        .padding(.horizontal, DS.Space.xxs)
+    }
+
+    /// Column headers replace the old inline "12.5 × 10" ghost text that sat
+    /// unlabelled beside each input — a bare pair of numbers next to a field
+    /// you're typing into reads as a second input, not as last session's
+    /// figures. Naming the columns once at the top says it for every row.
+    private var columnHeaders: some View {
+        HStack(spacing: DS.Space.xs) {
+            Text("SET")
+                .frame(width: 26, alignment: .leading)
+            Text("PREVIOUS")
+                .frame(width: 66, alignment: .leading)
+            Text("KG")
+                .frame(width: 58, alignment: .center)
+            Text("REPS")
+                .frame(width: 48, alignment: .center)
+            Spacer(minLength: 0)
+            Image(systemName: "checkmark")
+                .frame(width: 30)
+        }
+        .dsFont(DS.TypeScale.caption2, relativeTo: .caption2, weight: .semibold)
+        .tracking(0.6)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, DS.Space.sm)
+        .padding(.top, DS.Space.xs + 2)
+        .padding(.bottom, DS.Space.xxs)
+        .accessibilityHidden(true) // each row already reads its own values
     }
 
     private var menu: some View {
@@ -189,11 +224,12 @@ struct ExerciseCardView: View {
                         dropChainRows(under: topSet, ghostDrops: rowGhost?.drops ?? [])
                     }
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 4)
-                .background(index.isMultiple(of: 2) ? Color.clear : Color.primary.opacity(0.045))
+                .padding(.horizontal, DS.Space.sm)
+                .padding(.vertical, DS.Space.xxs)
+                .background(index.isMultiple(of: 2) ? Color.clear : Color.primary.opacity(0.04))
             }
         }
+        .padding(.bottom, DS.Space.xxs)
     }
 
     private var addSetButton: some View {
@@ -202,12 +238,11 @@ struct ExerciseCardView: View {
             onPlanChanged()
         } label: {
             Label("Add Set", systemImage: "plus")
-                .font(.subheadline)
-                .frame(maxWidth: .infinity, minHeight: 44)
+                .dsFont(DS.TypeScale.caption, relativeTo: .subheadline, weight: .medium)
+                .frame(maxWidth: .infinity, minHeight: 38)
         }
         .buttonStyle(.plain)
         .foregroundStyle(Color.accentColor)
-        .overlay(Divider(), alignment: .top)
     }
 
     /// One exercise = one card: a header block (name, rest setting, `···`),
@@ -215,13 +250,26 @@ struct ExerciseCardView: View {
     /// a long workout scannable — before, every exercise ran together into one
     /// undifferentiated column of rows.
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: DS.Space.sm) {
             header
-            Divider()
-            setList
+            // The set list lives in its own inset container rather than
+            // running edge-to-edge: it groups the rows as one block, and the
+            // concentric radius keeps its curve parallel to the card's.
+            VStack(spacing: 0) {
+                columnHeaders
+                setList
+            }
+            .background(
+                Color(.tertiarySystemGroupedBackground),
+                in: .rect(
+                    cornerRadius: DS.concentricRadius(outer: DS.Radius.large, inset: DS.Space.sm),
+                    style: .continuous
+                )
+            )
             addSetButton
         }
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
+        .padding(DS.Space.sm)
+        .dsCard()
         .sheet(isPresented: $showingPlateCalculator) {
             PlateCalculatorSheet(
                 exerciseName: workoutExercise.exercise?.name ?? "Exercise",

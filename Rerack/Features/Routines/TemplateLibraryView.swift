@@ -34,16 +34,16 @@ struct TemplateLibraryView: View {
 
     private func row(_ template: RoutineTemplate) -> some View {
         VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 6) {
+            HStack(spacing: DS.Space.xs) {
                 Text(template.title)
-                    .font(.headline)
+                    .dsFont(DS.TypeScale.body, relativeTo: .headline, weight: .semibold)
                     .foregroundStyle(.primary)
-                if template.isDeveloperPick {
-                    Text("DEV PICK")
-                        .font(.caption2.bold())
+                if template.isRecommended {
+                    Text("RECOMMENDED")
+                        .dsFont(DS.TypeScale.caption2, relativeTo: .caption2, weight: .bold)
                         .foregroundStyle(.white)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
+                        .padding(.horizontal, DS.Space.xs)
+                        .padding(.vertical, 3)
                         .background(Color.accentColor, in: Capsule())
                 }
                 Spacer()

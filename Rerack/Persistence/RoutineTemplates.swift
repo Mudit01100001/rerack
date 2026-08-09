@@ -58,8 +58,10 @@ struct RoutineTemplate: Identifiable {
     /// deliberately leaves out.
     let detail: String
     let daysPerWeek: String
-    /// Marks the maintainer's own split. Exactly one template carries it.
-    let isDeveloperPick: Bool
+    /// Surfaces one template as the starting recommendation. Internal name
+    /// only — the UI badge says "RECOMMENDED", never anything about who
+    /// wrote it.
+    let isRecommended: Bool
     let routines: [RoutineEntry]
 
     var exerciseCount: Int { routines.reduce(0) { $0 + $1.exercises.count } }
@@ -68,32 +70,31 @@ struct RoutineTemplate: Identifiable {
 // MARK: - The bundled set
 
 extension RoutineTemplate {
-    static let all: [RoutineTemplate] = [.muditSplit, .pushPullLegs, .upperLower, .fullBody]
+    static let all: [RoutineTemplate] = [.pushPullLegs, .pplAdvanced, .arnold, .upperLower, .fullBody]
 
-    /// The maintainer's actual split, reproduced as practised rather than as
-    /// idealised — including the weights and rep ranges being worked at, so
-    /// the first session under it already has real targets instead of empty
-    /// rows. Legs are genuinely absent: they've been excluded pending a knee
-    /// MRI, and a template that silently added a squat day would be
-    /// misrepresenting the split it claims to be.
-    static let muditSplit = RoutineTemplate(
-        id: "dev-split",
-        title: "The Dev's Split",
-        summary: "Chest/shoulders, back/biceps, shoulders/triceps, then repeats",
+    /// A five-day upper-focused split, shipped with real working weights
+    /// already filled in so the first session has targets rather than empty
+    /// rows. Legs are deliberately absent — see the detail copy.
+    static let pplAdvanced = RoutineTemplate(
+        id: "ppl-advanced",
+        title: "PPL Advanced",
+        summary: "Five days, upper-body focused, each muscle hit twice",
         detail: """
-        The split this app is built around, with real working weights already \
-        filled in — so the first session has targets rather than blank rows.
+        A five-day upper-body split with working weights already filled in, \
+        so your first session has targets instead of blank rows — adjust them \
+        as you go and the app tracks from there.
 
-        Upper-body focused, six slots a week with roughly three actually \
-        attended. Chest and back each get hit twice; arms get a dedicated day \
-        on top of the pulling and pressing that already hits them.
+        Chest and back are each trained twice a week; arms get a dedicated \
+        day on top of the pressing and pulling that already hits them. Built \
+        for someone training three to five days a week who wants upper-body \
+        volume without a six-day commitment.
 
-        No leg day. That's deliberate rather than an oversight — it's been \
-        left out pending a knee MRI. If your knees are fine, add a leg day; \
-        Push/Pull/Legs is the better starting point in that case.
+        No leg day, by design. If you train legs, add a day or start from \
+        Push / Pull / Legs instead — this one assumes you're working around \
+        something.
         """,
         daysPerWeek: "5 days",
-        isDeveloperPick: true,
+        isRecommended: true,
         routines: [
             RoutineEntry(name: "Mon — Chest & Shoulders", exercises: [
                 // The doc records two loads on this movement — a heavy top
@@ -165,7 +166,7 @@ extension RoutineTemplate {
         on the first session and the app carries it forward from there.
         """,
         daysPerWeek: "3 or 6 days",
-        isDeveloperPick: false,
+        isRecommended: false,
         routines: [
             RoutineEntry(name: "Push", exercises: [
                 .uniform("Barbell Bench Press", sets: 4, weightKg: nil, reps: 6),
@@ -194,6 +195,56 @@ extension RoutineTemplate {
         ]
     )
 
+    /// The Golden Six-era Arnold split — chest/back, shoulders/arms, legs,
+    /// each run twice a week. High volume and a six-day commitment; included
+    /// because people look it up by name, with the honest caveat that its
+    /// frequency is the reason most people abandon it.
+    static let arnold = RoutineTemplate(
+        id: "arnold",
+        title: "Arnold Split",
+        summary: "Six days — chest/back, shoulders/arms, legs, twice each",
+        detail: """
+        Chest and back trained together on the same day, then shoulders and \
+        arms, then legs — and the whole thing run twice a week.
+
+        This is high volume and a genuine six-day commitment. It works if you \
+        can actually train six days; if you're realistically hitting three or \
+        four, Upper/Lower or PPL Advanced will get you further than a plan \
+        you keep missing two-thirds of.
+
+        Weights are left blank — fill in what you actually lift on the first \
+        session and the app carries it forward.
+        """,
+        daysPerWeek: "6 days",
+        isRecommended: false,
+        routines: [
+            RoutineEntry(name: "Chest & Back", exercises: [
+                .uniform("Barbell Bench Press", sets: 4, weightKg: nil, reps: 8, supersetGroup: "A"),
+                .uniform("Barbell Bent-Over Row", sets: 4, weightKg: nil, reps: 8, supersetGroup: "A"),
+                .uniform("Incline Dumbbell Bench Press", sets: 3, weightKg: nil, reps: 10, supersetGroup: "B"),
+                .uniform("Pull-Up", sets: 3, weightKg: nil, reps: 10, supersetGroup: "B"),
+                .uniform("Dumbbell Fly", sets: 3, weightKg: nil, reps: 12),
+                .uniform("Seated Cable Row", sets: 3, weightKg: nil, reps: 12),
+            ]),
+            RoutineEntry(name: "Shoulders & Arms", exercises: [
+                .uniform("Overhead Barbell Press", sets: 4, weightKg: nil, reps: 8),
+                .uniform("Dumbbell Lateral Raise", sets: 4, weightKg: nil, reps: 12),
+                .uniform("Reverse Pec Deck (Rear Delt Fly)", sets: 3, weightKg: nil, reps: 15),
+                .uniform("Barbell Curl", sets: 4, weightKg: nil, reps: 10, supersetGroup: "A"),
+                .uniform("Cable Triceps Pushdown (Straight Bar)", sets: 4, weightKg: nil, reps: 10, supersetGroup: "A"),
+                .uniform("Concentration Curl", sets: 3, weightKg: nil, reps: 12),
+                .uniform("Dumbbell Overhead Triceps Extension", sets: 3, weightKg: nil, reps: 12),
+            ]),
+            RoutineEntry(name: "Legs", exercises: [
+                .uniform("Barbell Back Squat", sets: 5, weightKg: nil, reps: 8),
+                .uniform("Romanian Deadlift", sets: 4, weightKg: nil, reps: 10),
+                .uniform("Leg Extension", sets: 3, weightKg: nil, reps: 15),
+                .uniform("Lying Leg Curl", sets: 3, weightKg: nil, reps: 12),
+                .uniform("Standing Calf Raise Machine", sets: 5, weightKg: nil, reps: 15),
+            ]),
+        ]
+    )
+
     static let upperLower = RoutineTemplate(
         id: "upper-lower",
         title: "Upper / Lower",
@@ -203,7 +254,7 @@ extension RoutineTemplate {
         without the six-day commitment Push/Pull/Legs asks for at full tilt.
         """,
         daysPerWeek: "4 days",
-        isDeveloperPick: false,
+        isRecommended: false,
         routines: [
             RoutineEntry(name: "Upper A — Strength", exercises: [
                 .uniform("Barbell Bench Press", sets: 4, weightKg: nil, reps: 5),
@@ -248,7 +299,7 @@ extension RoutineTemplate {
         than your effort.
         """,
         daysPerWeek: "3 days",
-        isDeveloperPick: false,
+        isRecommended: false,
         routines: [
             RoutineEntry(name: "Full Body A", exercises: [
                 .uniform("Barbell Back Squat", sets: 3, weightKg: nil, reps: 8),
