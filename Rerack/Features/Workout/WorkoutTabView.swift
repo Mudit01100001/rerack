@@ -30,7 +30,7 @@ struct WorkoutTabView: View {
                     Button {
                         createRoutine()
                     } label: {
-                        Label("New Routine", systemImage: "plus")
+                        Label("New Workout", systemImage: "plus")
                     }
                     NavigationLink {
                         TemplateLibraryView()

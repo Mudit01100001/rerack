@@ -12,6 +12,9 @@ struct WorkoutActivityAttributes: ActivityAttributes {
     /// Frozen at start — nothing in the app edits a workout's title mid-session.
     let workoutID: UUID
     let workoutTitle: String
+    /// Drives the elapsed-time counter, which ticks on-device from this
+    /// instant rather than costing an update push per second (§P3).
+    let startedAt: Date
 
     struct ContentState: Codable, Hashable {
         /// M6 §7: the entire phase enum. "Ready", "Finished" and "All done"
@@ -36,6 +39,14 @@ struct WorkoutActivityAttributes: ActivityAttributes {
         /// `Text(timerInterval:)`, which counts down on-device with zero
         /// update pushes (M6 §P3).
         var restEndsAt: Date?
+        /// The other end of the rest range — a determinate progress bar needs
+        /// both, unlike the countdown which only needs the end.
+        var restStartedAt: Date?
+
+        /// Asset-catalogue name for this exercise's thumbnail, or nil while
+        /// no artwork exists for it. Carried end-to-end now so dropping real
+        /// images in later is an asset-catalogue change and nothing more.
+        var exerciseImageName: String?
 
         /// Intent target and deep-link focus. Nil ⇒ nothing planned remains.
         var workoutExerciseID: UUID?
@@ -54,6 +65,8 @@ struct WorkoutActivityAttributes: ActivityAttributes {
             ContentState(
                 phase: .logging,
                 restEndsAt: nil,
+                restStartedAt: nil,
+                exerciseImageName: nil,
                 workoutExerciseID: nil,
                 setIndex: 0,
                 exerciseName: nil,

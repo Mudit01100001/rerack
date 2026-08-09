@@ -40,7 +40,7 @@ enum ExplainerTerm: String, CaseIterable, Identifiable {
         case .dropSet: "Drop set"
         case .warmupSets: "Warm-up sets"
         case .trackAsProgress: "Track as progress"
-        case .updateRoutineValues: "Update routine values"
+        case .updateRoutineValues: "Update target values"
         case .streak: "Streak"
         case .ghostSets: "Ghost sets"
         }
@@ -68,9 +68,9 @@ enum ExplainerTerm: String, CaseIterable, Identifiable {
         case .warmupSets:
             "Sets done to prepare, not to progress — so they're kept out of your volume by default."
         case .trackAsProgress:
-            "Whether this routine's sessions count toward your graphs and records."
+            "Whether this workout's sessions count toward your graphs and records."
         case .updateRoutineValues:
-            "Whether finishing a workout rewrites the routine's targets to match what you actually did."
+            "Whether finishing a session rewrites this workout's targets to match what you actually did."
         case .streak:
             "Consecutive weeks — not days — in which you trained at least once."
         case .ghostSets:

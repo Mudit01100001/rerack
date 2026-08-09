@@ -22,7 +22,7 @@ struct TemplateLibraryView: View {
                     .buttonStyle(.plain)
                 }
             } footer: {
-                Text("Importing copies the routines into your library. Nothing stays linked — edit or delete them like any routine you built yourself.")
+                Text("Importing copies the workouts into your library. Nothing stays linked — edit or delete them like any workout you built yourself.")
             }
         }
         .navigationTitle("Templates")
@@ -55,7 +55,7 @@ struct TemplateLibraryView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.leading)
-            Text("\(template.daysPerWeek) · \(template.routines.count) routines · \(template.exerciseCount) exercises")
+            Text("\(template.daysPerWeek) · \(template.routines.count) workouts · \(template.exerciseCount) exercises")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         }
@@ -155,7 +155,7 @@ private struct TemplateDetailView: View {
     }
 
     private func message(for result: TemplateImporter.Result) -> String {
-        var text = "\(result.routinesCreated) routine\(result.routinesCreated == 1 ? "" : "s") added to a “\(template.title)” folder."
+        var text = "\(result.routinesCreated) workout\(result.routinesCreated == 1 ? "" : "s") added to a “\(template.title)” folder."
         if !result.unmatchedExercises.isEmpty {
             let unique = Array(Set(result.unmatchedExercises)).sorted()
             text += "\n\nSkipped (not in your exercise library): \(unique.joined(separator: ", "))."

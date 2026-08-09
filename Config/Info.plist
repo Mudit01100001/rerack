@@ -39,6 +39,8 @@
 	<string>Reads your bodyweight and body-fat history from Health to chart your Measures and fold bodyweight into set volume for bodyweight exercises.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Writes your finished workouts to Health as strength-training sessions.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Saves your workout share cards to your photo library.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>

@@ -176,3 +176,63 @@ struct SkipRestIntent: LiveActivityIntent {
         return .result()
     }
 }
+
+/// §7.5's −15s / +15s, on the Lock Screen.
+///
+/// The M6 design doc cut these from the island (§10) to keep one large
+/// target per phase — that call is reversed here deliberately: adjusting
+/// rest without unlocking is worth more than the extra target size, and the
+/// in-app bar has had both buttons since M5 anyway, so the two surfaces now
+/// agree instead of offering different controls for the same timer.
+struct AdjustRestIntent: LiveActivityIntent {
+    static let title: LocalizedStringResource = "Adjust Rest"
+    static let openAppWhenRun: Bool = false
+    static let isDiscoverable: Bool = false
+
+    @Parameter(title: "Workout ID") var workoutID: String
+    @Parameter(title: "Seconds") var deltaSeconds: Int
+
+    init() {}
+
+    init(workoutID: UUID, deltaSeconds: Int) {
+        self.workoutID = workoutID.uuidString
+        self.deltaSeconds = deltaSeconds
+    }
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        let context = ModelContainerFactory.shared.mainContext
+        guard let workoutUUID = UUID(uuidString: workoutID) else { return .result() }
+        let descriptor = FetchDescriptor<Workout>(predicate: #Predicate { $0.id == workoutUUID })
+        guard let workout = (try? context.fetch(descriptor))?.first,
+              workout.isLive,
+              let current = workout.restEndsAt
+        else { return .result() }
+
+        // Floors at 15s out so "−15s" on a nearly-expired timer can't push
+        // the end instant into the past — same rule the in-app bar uses.
+        let adjusted = max(current.addingTimeInterval(TimeInterval(deltaSeconds)), Date().addingTimeInterval(15))
+        workout.restEndsAt = adjusted
+        try? context.save()
+
+        let exercises = (workout.exercises ?? []).sorted { $0.orderIndex < $1.orderIndex }
+        // The pending notification would otherwise still fire at the old
+        // instant, disagreeing with the countdown the user just changed.
+        if let resting = exercises.first(where: { $0.id == workout.restingExerciseID }) {
+            let ghostsProvider = WorkoutGhosts.provider(for: workout, context: context)
+            let next = WorkoutEngine.nextSet(after: resting, allExercises: exercises, ghostsProvider: ghostsProvider)
+            let nextLine = next.map { "\($0.exerciseName) · \($0.positionLabel) · \(WorkoutEngine.formattedPayload(weightKg: $0.weightKg, reps: $0.reps))" }
+            RestNotificationScheduler.schedule(
+                fireAt: adjusted,
+                content: .init(durationSeconds: Int(adjusted.timeIntervalSince(workout.restStartedAt ?? Date())), nextLine: nextLine)
+            )
+        }
+
+        LiveActivityController.shared.refresh(
+            workout: workout,
+            exercises: exercises,
+            ghostsProvider: WorkoutGhosts.provider(for: workout, context: context)
+        )
+        return .result()
+    }
+}

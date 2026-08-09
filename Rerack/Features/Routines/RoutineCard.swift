@@ -1,13 +1,13 @@
 import SwiftUI
 
 /// PRD §9.3: "name, exercise count, derived muscle chips, last-performed
-/// relative date, Start Routine button. Long-press → Edit / Duplicate /
+/// relative date, Start Workout button. Long-press → Edit / Duplicate /
 /// Move to folder / Delete." Muscle chips are computed from the exercises'
 /// primary muscles at render time — never stored — so they can't go stale
 /// when an exercise is swapped.
 ///
 /// Fixed from M2: the whole card used to open the editor on tap regardless
-/// of where you touched, which is why "Start Routine" appeared broken — it
+/// of where you touched, which is why "Start Workout" appeared broken — it
 /// was disabled (no active workout screen existed yet), and the tap fell
 /// through to the card's own gesture. Tapping the card (or the button) now
 /// starts the routine; editing only lives behind long-press.
@@ -53,7 +53,7 @@ struct RoutineCard: View {
             }
 
             Button(action: onStart) {
-                Label("Start Routine", systemImage: "play.fill")
+                Label("Start Workout", systemImage: "play.fill")
                     .font(.subheadline)
             }
             .buttonStyle(.bordered)

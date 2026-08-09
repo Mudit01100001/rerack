@@ -47,6 +47,9 @@ targets:
         # "Not now" onboarding screen — never repeated if declined.
         NSHealthShareUsageDescription: "Reads your bodyweight and body-fat history from Health to chart your Measures and fold bodyweight into set volume for bodyweight exercises."
         NSHealthUpdateUsageDescription: "Writes your finished workouts to Health as strength-training sessions."
+        # §9.5 "Save to Photos" on a share card. Add-only: the app writes
+        # cards out and never reads the library, so it asks for exactly that.
+        NSPhotoLibraryAddUsageDescription: "Saves your workout share cards to your photo library."
         # Answers the App Store Connect export-compliance question at
         # upload time instead of on the web every single build: the app
         # makes zero network calls and has no custom encryption anywhere

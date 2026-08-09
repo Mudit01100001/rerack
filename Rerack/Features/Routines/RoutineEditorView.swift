@@ -54,7 +54,7 @@ struct RoutineEditorView: View {
 
                 Section {
                     Toggle("Track as progress", isOn: $routine.trackAsProgress)
-                    Toggle("Update routine values on finish", isOn: $routine.updateValuesOnFinish)
+                    Toggle("Update target values on finish", isOn: $routine.updateValuesOnFinish)
                 } footer: {
                     Text("Both default on. Turning off \"Track as progress\" keeps this routine's sessions in your history and export, but out of graphs and PRs — useful for deload weeks. See PRD §9.3.")
                 }
@@ -88,7 +88,7 @@ struct RoutineEditorView: View {
                     }
                 }
             }
-            .navigationTitle(routine.name.isEmpty ? "New Routine" : routine.name)
+            .navigationTitle(routine.name.isEmpty ? "New Workout" : routine.name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -193,7 +193,7 @@ struct RoutineEditorView: View {
         dismiss()
     }
 
-    /// A routine created via "+ New Routine" is inserted immediately (so the
+    /// A routine created via "+ New Workout" is inserted immediately (so the
     /// editor has something to bind to) — if the user backs out without
     /// naming it or adding anything, that empty row shouldn't linger.
     private func cancel() {

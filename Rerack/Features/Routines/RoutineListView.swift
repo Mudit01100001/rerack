@@ -26,9 +26,9 @@ struct RoutineListView: View {
     var body: some View {
         if routines.isEmpty {
             VStack(alignment: .leading, spacing: 4) {
-                Text("No routines yet")
+                Text("No workouts yet")
                     .font(.subheadline.weight(.medium))
-                Text("Tap \"+ New Routine\" below to build your first one.")
+                Text("Tap \"+ New Workout\" below to build your first one.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

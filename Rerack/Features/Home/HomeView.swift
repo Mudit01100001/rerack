@@ -20,7 +20,7 @@ struct HomeView: View {
                     ContentUnavailableView(
                         "No workouts yet",
                         systemImage: "figure.strengthtraining.traditional",
-                        description: Text("Start a routine from the Workout tab and it'll show up here.")
+                        description: Text("Start a workout from the Workout tab and it'll show up here.")
                     )
                 } else {
                     List(workouts) { workout in

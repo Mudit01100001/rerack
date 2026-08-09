@@ -17,6 +17,7 @@ struct WorkoutSummaryView: View {
     @State private var photoItem: PhotosPickerItem?
     @State private var photoData: Data?
     @State private var newTagText = ""
+    @State private var showingShareCards = false
 
     private var sortedExercises: [WorkoutExercise] {
         (workout.exercises ?? []).sorted { $0.orderIndex < $1.orderIndex }
@@ -74,29 +75,54 @@ struct WorkoutSummaryView: View {
         return counts.keys.sorted { counts[$0]! != counts[$1]! ? counts[$0]! > counts[$1]! : $0 < $1 }
     }
 
+    /// Everything fits one screen with no scrolling until you actually add
+    /// content — collapsed rows rather than expanded boxes, and the exercise
+    /// breakdown behind a disclosure instead of always-on. A finish screen
+    /// you have to scroll to reach "Done" on is a finish screen that gets
+    /// dismissed without its optional fields ever being filled.
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 20) {
+            List {
+                Section {
                     header
-                    photoPicker
                     statTiles
-                    dateLine
-                    Divider()
-                    VStack(alignment: .leading, spacing: 16) {
-                        gymField
-                        tagsField
-                        notesField
-                    }
-                    Divider()
-                    exerciseBreakdown
-                    if newRecordCount > 0 {
-                        Text("🏆 \(newRecordCount) new record\(newRecordCount == 1 ? "" : "s") this session")
-                            .font(.subheadline.bold())
-                    }
-                    actionButtons
+                        .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 8, trailing: 8))
                 }
-                .padding()
+
+                Section {
+                    photoRow
+                    gymRow
+                    tagsRow
+                    notesRow
+                    dateRow
+                }
+
+                Section {
+                    DisclosureGroup {
+                        exerciseBreakdown
+                    } label: {
+                        HStack {
+                            Text("Exercise breakdown")
+                            Spacer()
+                            Text("\(sortedExercises.count)")
+                                .foregroundStyle(.secondary)
+                        }
+                        .font(.subheadline)
+                    }
+                    if newRecordCount > 0 {
+                        Label(
+                            "\(newRecordCount) new record\(newRecordCount == 1 ? "" : "s") this session",
+                            systemImage: "trophy.fill"
+                        )
+                        .font(.subheadline.bold())
+                        .foregroundStyle(.orange)
+                    }
+                }
+
+                Section {
+                    actionButtons
+                        .listRowInsets(EdgeInsets(top: 6, leading: 8, bottom: 6, trailing: 8))
+                }
             }
             .navigationBarTitleDisplayMode(.inline)
             .task(id: photoItem) {
@@ -105,6 +131,9 @@ struct WorkoutSummaryView: View {
                 if let oldFilename = workout.photoFilename { PhotoStorage.delete(oldFilename) }
                 photoData = data
                 workout.photoFilename = PhotoStorage.save(data)
+            }
+            .sheet(isPresented: $showingShareCards) {
+                ShareCardSheet(workout: workout)
             }
             .onAppear {
                 if let filename = workout.photoFilename {
@@ -129,38 +158,36 @@ struct WorkoutSummaryView: View {
     }
 
     private var header: some View {
-        VStack(spacing: 4) {
-            Text(greeting).font(.title2.bold())
+        VStack(spacing: 2) {
+            Text(greeting).font(.title3.bold())
             Text(workout.routineNameSnapshot ?? workout.title)
-                .font(.headline)
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
+        .frame(maxWidth: .infinity)
+        .listRowBackground(Color.clear)
     }
 
     /// PRD §9.4: photo sits at the top, one image, PhotosPicker with camera
     /// and library — reusing the exact `PhotoStorage` utility Cardio already
     /// uses (`AddCardioSessionView`), not a second photo pipeline.
-    private var photoPicker: some View {
+    /// Collapsed to a row until a photo exists — a 180pt dashed box costs a
+    /// third of the screen to advertise an optional field most sessions skip.
+    private var photoRow: some View {
         PhotosPicker(selection: $photoItem, matching: .images) {
-            if let photoData, let uiImage = UIImage(data: photoData) {
-                Image(uiImage: uiImage)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(height: 180)
-                    .frame(maxWidth: .infinity)
-                    .clipped()
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-            } else {
-                VStack(spacing: 8) {
-                    Image(systemName: "camera")
-                        .font(.largeTitle)
-                    Text("Add a photo")
+            HStack {
+                Label("Photo", systemImage: "camera")
+                Spacer()
+                if let photoData, let uiImage = UIImage(data: photoData) {
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 44, height: 44)
+                        .clipped()
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                } else {
+                    Text("Add").foregroundStyle(.secondary)
                 }
-                .frame(height: 180)
-                .frame(maxWidth: .infinity)
-                .background(Color(.secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .foregroundStyle(.secondary)
             }
         }
         .buttonStyle(.plain)
@@ -172,17 +199,18 @@ struct WorkoutSummaryView: View {
             statTile(value: "\(Int(workout.cachedVolumeKg)) kg", label: "Volume")
             statTile(value: "\(workout.cachedSetCount)", label: "Sets")
         }
+        .listRowBackground(Color.clear)
     }
 
     private func statTile(value: String, label: String) -> some View {
-        VStack(spacing: 4) {
-            Text(value).font(.title3.bold())
-            Text(label).font(.caption).foregroundStyle(.secondary)
+        VStack(spacing: 2) {
+            Text(value).font(.title3.bold().monospacedDigit())
+            Text(label).font(.caption2).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(.vertical, 8)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
     /// PRD §18 Q7: pure wall-clock `endedAt − startedAt`, no exceptions —
@@ -194,60 +222,75 @@ struct WorkoutSummaryView: View {
         return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%02d:%02d", m, s)
     }
 
-    private var dateLine: some View {
+    private var dateRow: some View {
         // PRD §9.4: auto-captured, displayed, not editable.
-        Text(workout.startedAt.formatted(date: .complete, time: .shortened))
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
+        HStack {
+            Label("Date", systemImage: "calendar")
+            Spacer()
+            Text(workout.startedAt.formatted(date: .abbreviated, time: .shortened))
+                .foregroundStyle(.secondary)
+        }
     }
 
     // MARK: - Gym / tags / notes
 
-    private var gymField: some View {
-        VStack(alignment: .leading, spacing: 6) {
+    /// Each optional field is one row that grows only when used. The
+    /// autocomplete chips appear under Gym once you focus it, not before —
+    /// they're an accelerator, not something to look at every session.
+    private var gymRow: some View {
+        HStack {
             Label("Gym", systemImage: "mappin.and.ellipse")
-                .font(.caption)
+            Spacer()
+            TextField("Select", text: locationBinding)
+                .multilineTextAlignment(.trailing)
                 .foregroundStyle(.secondary)
-            TextField("Gym", text: locationBinding)
-                .textFieldStyle(.roundedBorder)
-            if !previousLocations.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack {
-                        ForEach(previousLocations, id: \.self) { location in
-                            FilterChip(title: location, isSelected: workout.location == location) {
-                                workout.location = location
-                            }
-                        }
-                    }
-                }
+        }
+    }
+
+    private var tagsRow: some View {
+        NavigationLink {
+            tagPicker
+        } label: {
+            HStack {
+                Label("Tags", systemImage: "tag")
+                Spacer()
+                Text(workout.tags.isEmpty ? "None" : workout.tags.joined(separator: ", "))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
         }
     }
 
-    private var tagsField: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Label("Tags", systemImage: "tag")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+    private var tagPicker: some View {
+        List {
+            Section {
+                HStack {
+                    TextField("New tag", text: $newTagText)
+                        .onSubmit(addNewTag)
+                    Button("Add", action: addNewTag)
+                        .disabled(newTagText.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
             if !allTagOptions.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack {
-                        ForEach(allTagOptions, id: \.self) { tag in
-                            FilterChip(title: tag, isSelected: workout.tags.contains(tag)) {
-                                toggleTag(tag)
+                Section {
+                    ForEach(allTagOptions, id: \.self) { tag in
+                        Button {
+                            toggleTag(tag)
+                        } label: {
+                            HStack {
+                                Text(tag).foregroundStyle(.primary)
+                                Spacer()
+                                if workout.tags.contains(tag) {
+                                    Image(systemName: "checkmark").foregroundStyle(Color.accentColor)
+                                }
                             }
                         }
                     }
                 }
             }
-            HStack {
-                TextField("New tag", text: $newTagText)
-                    .textFieldStyle(.roundedBorder)
-                    .onSubmit(addNewTag)
-                Button("Add", action: addNewTag)
-                    .disabled(newTagText.trimmingCharacters(in: .whitespaces).isEmpty)
-            }
         }
+        .navigationTitle("Tags")
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     private func toggleTag(_ tag: String) {
@@ -265,14 +308,16 @@ struct WorkoutSummaryView: View {
         newTagText = ""
     }
 
-    private var notesField: some View {
-        VStack(alignment: .leading, spacing: 6) {
+    private var notesRow: some View {
+        HStack(alignment: .top) {
             Label("Notes", systemImage: "note.text")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Spacer()
+            // Grows from one line only as you type — an always-3-line box
+            // costs vertical space every session to serve the rare one.
             TextField("Optional", text: notesBinding, axis: .vertical)
-                .textFieldStyle(.roundedBorder)
-                .lineLimit(3...6)
+                .multilineTextAlignment(.trailing)
+                .foregroundStyle(.secondary)
+                .lineLimit(1...4)
         }
     }
 
@@ -319,17 +364,24 @@ struct WorkoutSummaryView: View {
 
     private var actionButtons: some View {
         HStack(spacing: 12) {
-            // PRD §9.5 — the share carousel is M10. Disabled stub only, per scope.
-            Button("Share") {}
-                .buttonStyle(.bordered)
-                .disabled(true)
-            Button("Done") {
+            Button {
+                showingShareCards = true
+            } label: {
+                Label("Share", systemImage: "square.and.arrow.up")
+                    .frame(maxWidth: .infinity, minHeight: 40)
+            }
+            .buttonStyle(.bordered)
+
+            Button {
                 try? modelContext.save()
                 onDone()
+            } label: {
+                Text("Done")
+                    .fontWeight(.semibold)
+                    .frame(maxWidth: .infinity, minHeight: 40)
             }
             .buttonStyle(.borderedProminent)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.top, 8)
+        .listRowBackground(Color.clear)
     }
 }

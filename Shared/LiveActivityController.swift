@@ -39,7 +39,8 @@ final class LiveActivityController {
 
         let attributes = WorkoutActivityAttributes(
             workoutID: workout.id,
-            workoutTitle: workout.routineNameSnapshot ?? workout.title
+            workoutTitle: workout.routineNameSnapshot ?? workout.title,
+            startedAt: workout.startedAt
         )
         let state = Self.contentState(for: workout, exercises: exercises, ghostsProvider: ghostsProvider)
         activity = try? Activity.request(
@@ -89,6 +90,7 @@ final class LiveActivityController {
             var state = WorkoutActivityAttributes.ContentState.allLogged
             state.phase = phase
             state.restEndsAt = workout.restEndsAt
+            state.restStartedAt = workout.restStartedAt
             state.positionLabel = exercises.isEmpty ? "No exercises yet" : "All planned sets logged"
             return state
         }
@@ -111,6 +113,8 @@ final class LiveActivityController {
         return WorkoutActivityAttributes.ContentState(
             phase: phase,
             restEndsAt: workout.restEndsAt,
+            restStartedAt: workout.restStartedAt,
+            exerciseImageName: ExerciseArtwork.assetName(for: pointer.exerciseName),
             workoutExerciseID: pointer.workoutExerciseID,
             setIndex: pointer.setIndex,
             exerciseName: pointer.exerciseName,

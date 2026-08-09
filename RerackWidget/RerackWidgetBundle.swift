@@ -1,6 +1,7 @@
 import WidgetKit
 import SwiftUI
 import ActivityKit
+import UIKit
 
 @main
 struct RerackWidgetBundle: WidgetBundle {
@@ -105,43 +106,57 @@ private struct LockScreenView: View {
     let context: ActivityViewContext<WorkoutActivityAttributes>
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(context.attributes.workoutTitle.uppercased())
                     .font(.caption2)
                     .tracking(0.5)
                     .foregroundStyle(.secondary)
                 Spacer()
-                if let restEndsAt = context.state.restEndsAt {
-                    Text(timerInterval: Date()...max(restEndsAt, Date()), countsDown: true)
-                        .font(.caption.monospacedDigit())
-                        .frame(maxWidth: 56, alignment: .trailing)
-                }
+                Text(timerInterval: context.attributes.startedAt...Date.distantFuture, countsDown: false)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: 64, alignment: .trailing)
             }
 
-            HStack(spacing: 6) {
-                if let supersetLabel = context.state.supersetLabel {
-                    Text(supersetLabel)
-                        .font(.caption2.bold())
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.accentColor, in: Capsule())
+            HStack(spacing: 10) {
+                ExerciseThumbnail(assetName: context.state.exerciseImageName)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        if let supersetLabel = context.state.supersetLabel {
+                            Text(supersetLabel)
+                                .font(.caption2.bold())
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.accentColor, in: Capsule())
+                        }
+                        Text(context.state.exerciseName ?? context.state.positionLabel)
+                            .font(.headline)
+                            .lineLimit(1)
+                    }
+                    if context.state.exerciseName != nil {
+                        Text(restingSubtitle)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
-                Text(context.state.exerciseName ?? context.state.positionLabel)
-                    .font(.headline)
-                    .lineLimit(1)
-                Spacer()
-                if context.state.exerciseName != nil {
-                    Text(context.state.positionLabel)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                Spacer(minLength: 0)
             }
 
-            PayloadRow(context: context, showsAdjust: true)
+            if let restEndsAt = context.state.restEndsAt {
+                RestControls(
+                    workoutID: context.attributes.workoutID,
+                    startedAt: context.state.restStartedAt ?? Date(),
+                    endsAt: restEndsAt
+                )
+            } else {
+                PayloadRow(context: context, showsAdjust: true)
+            }
 
-            if let thenLine = context.state.thenLine {
+            if let thenLine = context.state.thenLine, context.state.restEndsAt == nil {
                 Text(thenLine)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -149,6 +164,104 @@ private struct LockScreenView: View {
             }
         }
         .padding(14)
+    }
+
+    /// While resting the second line previews what's coming rather than
+    /// repeating the position — the payload row has been replaced by the
+    /// timer, so this is the only place the next set's numbers still appear.
+    private var restingSubtitle: String {
+        guard context.state.restEndsAt != nil else { return context.state.positionLabel }
+        switch context.state.payload {
+        case .known(let weightKg, let reps):
+            let weight = weightKg.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(weightKg)) : String(weightKg)
+            return "Next: \(context.state.positionLabel.lowercased()) · \(weight) kg × \(reps)"
+        case .repsOnly(let reps):
+            return "Next: \(context.state.positionLabel.lowercased()) · \(reps) reps"
+        case .unknown:
+            return "Next: \(context.state.positionLabel.lowercased())"
+        }
+    }
+}
+
+/// Round exercise thumbnail. Renders a dumbbell glyph until real artwork is
+/// dropped in — `exerciseImageName` is already carried end-to-end, so adding
+/// images later means adding files to the asset catalogue and nothing else.
+private struct ExerciseThumbnail: View {
+    let assetName: String?
+
+    var body: some View {
+        ZStack {
+            Circle().fill(Color.white.opacity(0.12))
+            if let assetName, UIImage(named: assetName) != nil {
+                Image(assetName)
+                    .resizable()
+                    .scaledToFill()
+                    .clipShape(Circle())
+            } else {
+                Image(systemName: "dumbbell.fill")
+                    .font(.system(size: 17))
+                    .foregroundStyle(.white.opacity(0.75))
+            }
+        }
+        .frame(width: 40, height: 40)
+    }
+}
+
+/// The resting control set: an on-device progress bar plus −15s / countdown /
+/// +15s / Skip. `ProgressView(timerInterval:)` animates without any update
+/// push (M6 §P3/§P5), so the bar costs nothing to keep live.
+private struct RestControls: View {
+    let workoutID: UUID
+    let startedAt: Date
+    let endsAt: Date
+
+    var body: some View {
+        VStack(spacing: 8) {
+            ProgressView(timerInterval: startedAt...max(endsAt, startedAt.addingTimeInterval(1)), countsDown: false) {
+                EmptyView()
+            } currentValueLabel: {
+                EmptyView()
+            }
+            .progressViewStyle(.linear)
+            .tint(Color.accentColor)
+
+            HStack(spacing: 8) {
+                Button(intent: AdjustRestIntent(workoutID: workoutID, deltaSeconds: -15)) {
+                    Text("−15s")
+                        .font(.footnote)
+                        .foregroundStyle(.white)
+                        .frame(minWidth: 54, minHeight: 40)
+                        .background(SecondaryActionBackground())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Reduce rest by 15 seconds")
+
+                Text(timerInterval: Date()...max(endsAt, Date()), countsDown: true)
+                    .font(.title3.monospacedDigit())
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+
+                Button(intent: AdjustRestIntent(workoutID: workoutID, deltaSeconds: 15)) {
+                    Text("+15s")
+                        .font(.footnote)
+                        .foregroundStyle(.white)
+                        .frame(minWidth: 54, minHeight: 40)
+                        .background(SecondaryActionBackground())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Add 15 seconds to rest")
+
+                Button(intent: SkipRestIntent(workoutID: workoutID)) {
+                    Text("Skip")
+                        .font(.subheadline.bold())
+                        .foregroundStyle(.white)
+                        .frame(minWidth: 62, minHeight: 40)
+                        .background(Color.accentColor, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Skip rest")
+            }
+        }
     }
 }
 

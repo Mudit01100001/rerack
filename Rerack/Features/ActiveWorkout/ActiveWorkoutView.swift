@@ -259,22 +259,22 @@ struct ActiveWorkoutView: View {
     /// you have to deliberately scroll past your whole workout to reach it —
     /// never adjacent to the tick you're tapping forty times a session.
     private var workoutActions: some View {
-        VStack(spacing: 10) {
+        HStack(spacing: 10) {
             Button {
                 showingWorkoutSettings = true
             } label: {
-                Label("Workout Settings", systemImage: "gearshape")
+                Label("Settings", systemImage: "gearshape")
                     .font(.subheadline)
-                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .frame(maxWidth: .infinity, minHeight: 36)
             }
             .buttonStyle(.bordered)
 
             Button(role: .destructive) {
                 showingDiscardConfirm = true
             } label: {
-                Label("Discard Workout", systemImage: "trash")
+                Label("Discard", systemImage: "trash")
                     .font(.subheadline)
-                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .frame(maxWidth: .infinity, minHeight: 36)
             }
             .buttonStyle(.bordered)
             .tint(.red)
