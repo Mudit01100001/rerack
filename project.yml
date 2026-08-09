@@ -21,15 +21,32 @@ targets:
     deploymentTarget: "17.0"
     sources:
       - path: Rerack
+      - path: Shared
+    dependencies:
+      - target: RerackWidget
+        embed: true
     info:
       path: Config/Info.plist
       properties:
         CFBundleDisplayName: $(APP_DISPLAY_NAME)
         LSRequiresIPhoneOS: true
+        # PRD §8 — the Live Activity (M6).
+        NSSupportsLiveActivities: true
+        # M6 §6.3 deep links: rerack://workout/active. The scheme is part of
+        # app identity (Appendix A.0), not the display name — it does not
+        # change when the app is renamed.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.mudit.logbook
+            CFBundleURLSchemes: [rerack]
         UIApplicationSupportsIndirectInputEvents: true
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+        # PRD §9.6/§9.7/§10.1: read bodyweight + body fat, write finished
+        # workout sessions. Both strings are shown once, on the "Connect" /
+        # "Not now" onboarding screen — never repeated if declined.
+        NSHealthShareUsageDescription: "Reads your bodyweight and body-fat history from Health to chart your Measures and fold bodyweight into set volume for bodyweight exercises."
+        NSHealthUpdateUsageDescription: "Writes your finished workouts to Health as strength-training sessions."
         # Answers the App Store Connect export-compliance question at
         # upload time instead of on the web every single build: the app
         # makes zero network calls and has no custom encryption anywhere
@@ -43,6 +60,10 @@ targets:
       properties:
         com.apple.security.application-groups:
           - group.com.mudit.logbook
+        # M9 (§9.6/§9.7/§13.1): read bodyweight/body-fat, write workout
+        # sessions. No "health-records" clinical-data entry needed — HealthKit
+        # gates that separately and nothing here uses it.
+        com.apple.developer.healthkit: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.mudit.logbook
@@ -57,6 +78,44 @@ targets:
         # so defaulting isolation to the main actor is the right call for
         # Swift 6 strict concurrency here rather than annotating every
         # @State-touching closure individually.
+        SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+
+  # M6: the Live Activity ships in a widget extension — a separate process
+  # rendering pre-composed state (M6 §8/§P8). It compiles Models/Persistence
+  # too, but only because the `LiveActivityIntent`s in Shared/ must typecheck
+  # in both targets; the intents *execute* in the app's process (§P7), and
+  # the widget UI itself never opens the store.
+  RerackWidget:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: RerackWidget
+      - path: Shared
+      - path: Rerack/Models
+      - path: Rerack/Persistence
+      - path: Rerack/App/AppIdentity.swift
+    entitlements:
+      path: Config/RerackWidget.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.mudit.logbook
+    info:
+      path: Config/RerackWidgetInfo.plist
+      properties:
+        CFBundleDisplayName: $(APP_DISPLAY_NAME)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mudit.logbook.widget
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: NO
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "2"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: YHK4D97KC4
+        SKIP_INSTALL: YES
         SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
 
 schemes:

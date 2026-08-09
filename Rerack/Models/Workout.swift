@@ -40,6 +40,31 @@ final class Workout {
     /// (PRD §15) even though `routine` below goes nil via `.nullify`.
     var routineNameSnapshot: String?
 
+    /// M6 §9.2. The absolute instant the current rest period ends, or `nil`
+    /// when nothing is resting. Persisted rather than held as view `@State`
+    /// because three separate consumers must agree on it: the in-app bar, the
+    /// local notification (§7.5), and the Live Activity countdown running in
+    /// the widget process — which cannot see `@State` at all (M6 §P8). Storing
+    /// the *end* instant rather than a start-plus-duration also makes
+    /// `±15s` adjustments and §17's ±1s accuracy fall out for free.
+    var restEndsAt: Date?
+
+    /// The instant rest began. Only the in-app progress bar needs it (a
+    /// `ProgressView(timerInterval:)` needs both ends of the range); the
+    /// island's countdown and the notification care only about `restEndsAt`.
+    var restStartedAt: Date?
+
+    /// Which exercise's rest is running — needed to render the bar under the
+    /// right card and to cancel rest when that exercise is removed (§7 row 26).
+    var restingExerciseID: UUID?
+
+    /// True once rest has begun for the currently-resting set. Distinct from
+    /// `restEndsAt != nil` because rest stays "active" for a beat after the
+    /// countdown hits zero (P4: no update can fire at T=0 from a suspended
+    /// app), and the app repairs the state on next foreground rather than
+    /// pretending the transition happened on time.
+    var isResting: Bool { restEndsAt != nil }
+
     var routine: Routine?
 
     @Relationship(deleteRule: .cascade, inverse: \WorkoutExercise.workout)
@@ -66,6 +91,15 @@ final class WorkoutExercise {
     var supersetGroup: String?
     var notes: String?
     var restSecondsUsed: Int?
+
+    /// M6 §9.1. How many set rows this exercise is *planning* to do — the
+    /// persisted twin of what `ExerciseCardView` used to compute as
+    /// `ghosts.count + extraRows`. `nil` means "however many ghosts resolve",
+    /// so a routine-driven exercise needs no value written until `+ Add Set`
+    /// is tapped. Persisted because the widget process can't see view state
+    /// (M6 §P8) and because `extraRows` as `@State` was silently lost every
+    /// time the card was torn down — an in-app defect in its own right.
+    var plannedSetCount: Int?
 
     var workout: Workout?
     var exercise: Exercise?

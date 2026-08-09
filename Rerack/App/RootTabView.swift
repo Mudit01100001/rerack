@@ -58,6 +58,17 @@ struct RootTabView: View {
         .task {
             recoverLiveWorkoutIfAny()
         }
+        // M6 §6.3: every Live Activity surface deep-links here. All three
+        // URLs (`active`, `?focus=…`, `?finish=1`) land on the active-workout
+        // screen; the focus/finish refinements are handled by the screen the
+        // user is now looking at, which is already the right one.
+        .onOpenURL { url in
+            guard url.scheme == WorkoutDeepLink.scheme else { return }
+            recoverLiveWorkoutIfAny()
+            if coordinator.liveWorkout != nil {
+                coordinator.isPresented = true
+            }
+        }
     }
 
     /// PRD §7.7: "if a Workout exists with endedAt == nil, the app restores

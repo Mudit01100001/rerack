@@ -31,6 +31,12 @@ final class UserProfile {
     /// there's no migration needed when the Live Activity ships.
     var islandTickLogsRaw: String = IslandTickSource.lastSession.rawValue
 
+    /// PRD §10.2 Apple Health / §13.1, default on. Off treats bodyweight
+    /// exercises as 0 kg of bodyweight load — "some people prefer this, since
+    /// it makes external-load progression easier to read." Only ever consulted
+    /// at set-completion time, so flipping it never rewrites past sets.
+    var useBodyweightInVolume: Bool = true
+
     var hasCompletedOnboarding: Bool = false
     var createdAt: Date = Date()
 

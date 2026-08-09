@@ -15,9 +15,6 @@ struct ActiveWorkoutView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
 
-    @State private var restingExerciseID: UUID?
-    @State private var restStartedAt: Date?
-    @State private var restAdjustSeconds = 0
     /// Set the moment the app leaves the foreground while a rest period is
     /// running (§ scenePhase handling below), reset whenever rest starts or
     /// clears. Distinguishes "this rest completed while backgrounded" (system
@@ -70,9 +67,23 @@ struct ActiveWorkoutView: View {
         (workout.exercises ?? []).sorted { $0.orderIndex < $1.orderIndex }
     }
 
+    /// M6 §9.2: rest lives on the `Workout` row, not in view state, so the
+    /// widget process and a background intent see the same instant this bar
+    /// does.
     private var restingExercise: WorkoutExercise? {
-        guard let restingExerciseID else { return nil }
-        return sortedExercises.first { $0.id == restingExerciseID }
+        guard let id = workout.restingExerciseID else { return nil }
+        return sortedExercises.first { $0.id == id }
+    }
+
+    /// One funnel for every "the island is now out of date" moment, so no
+    /// call site has to remember the three arguments (M6 §8's composer takes
+    /// the same inputs everywhere).
+    private func refreshActivity() {
+        LiveActivityController.shared.refresh(
+            workout: workout,
+            exercises: sortedExercises,
+            ghostsProvider: ghosts(for:)
+        )
     }
 
     var body: some View {
@@ -81,14 +92,15 @@ struct ActiveWorkoutView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     statsHeader
 
-                    if let restingExercise, let restStartedAt {
+                    if let restingExercise,
+                       let restStartedAt = workout.restStartedAt,
+                       let restEndsAt = workout.restEndsAt {
                         RestTimerBar(
                             restStartedAt: restStartedAt,
-                            durationSeconds: max(restDuration(for: restingExercise) + restAdjustSeconds, 15),
+                            restEndsAt: restEndsAt,
                             onSkip: { clearRest() },
                             onAdjust: { delta in
-                                restAdjustSeconds += delta
-                                rescheduleRestNotification(for: restingExercise)
+                                adjustRest(by: delta, for: restingExercise)
                             }
                         )
                         .padding(.horizontal)
@@ -96,22 +108,7 @@ struct ActiveWorkoutView: View {
 
                     ForEach(sortedExercises) { workoutExercise in
                         VStack(spacing: 0) {
-                            ExerciseCardView(
-                                workoutExercise: workoutExercise,
-                                allExercises: sortedExercises,
-                                ghosts: ghosts(for: workoutExercise),
-                                currentRestSeconds: restDuration(for: workoutExercise),
-                                onSetCompleted: handleCompleted,
-                                onSetUncompleted: handleUncompleted,
-                                onDropAdded: handleDropAdded,
-                                onGroupWith: { partner in group(workoutExercise, with: partner) },
-                                onUngroup: { ungroup(workoutExercise) },
-                                onRemove: { remove(workoutExercise) },
-                                onShowDetail: { detailExercise = workoutExercise.exercise },
-                                onSetRestConfig: { seconds, saveAsDefault in
-                                    applyRestConfig(workoutExercise, seconds: seconds, saveAsDefault: saveAsDefault)
-                                }
-                            )
+                            card(for: workoutExercise)
                             Divider()
                         }
                         .padding(.horizontal)
@@ -160,6 +157,7 @@ struct ActiveWorkoutView: View {
             ) {
                 Button("Discard Workout", role: .destructive) {
                     clearRest()
+                    LiveActivityController.shared.end() // §7 row 29
                     onDiscard()
                 }
                 Button("Keep Going", role: .cancel) {}
@@ -173,6 +171,7 @@ struct ActiveWorkoutView: View {
             ) {
                 Button("Discard Workout", role: .destructive) {
                     clearRest()
+                    LiveActivityController.shared.end() // §7 row 29
                     onDiscard()
                 }
                 Button("Keep Going", role: .cancel) {}
@@ -204,14 +203,14 @@ struct ActiveWorkoutView: View {
             .onChange(of: scenePhase) { _, newPhase in
                 switch newPhase {
                 case .background:
-                    if restingExerciseID != nil { restStartedWhileBackgrounded = true }
+                    if workout.restingExerciseID != nil { restStartedWhileBackgrounded = true }
                 case .active:
                     checkRestExpiry()
                     // Still resting after that check means expiry hasn't
                     // happened yet — we're back watching it in foreground, so
                     // a brief earlier background dip shouldn't make the
                     // *eventual* completion look like a backgrounded one.
-                    if restingExerciseID != nil { restStartedWhileBackgrounded = false }
+                    if workout.restingExerciseID != nil { restStartedWhileBackgrounded = false }
                 default:
                     break
                 }
@@ -219,6 +218,54 @@ struct ActiveWorkoutView: View {
         }
         .onAppear { applyIdleTimerSetting() }
         .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
+        .task { await captureBodyweightSnapshot() }
+        // §8.6/§7 rows 1, 31, 35: created when the workout screen first
+        // appears, re-adopted after relaunch, recreated after reboot.
+        .task {
+            LiveActivityController.shared.startIfNeeded(workout: workout, exercises: sortedExercises, ghostsProvider: ghosts(for:))
+        }
+    }
+
+    /// PRD §13.1: read once per workout and frozen on the `Workout` row, so
+    /// every set ticked in this session shares one bodyweight — and a weigh-in
+    /// halfway through can't make set 4 heavier than set 3 for no reason.
+    /// Runs on the *first* appearance only: a re-entered workout (crash
+    /// recovery, §7.7, or reopening from the cross-tab banner) keeps the value
+    /// it started with.
+    private func captureBodyweightSnapshot() async {
+        guard workout.bodyweightKg == nil, workout.isLive else { return }
+        guard let kg = await HealthKitManager.bodyweightKg(asOf: workout.startedAt) else { return }
+        workout.bodyweightKg = kg
+    }
+
+    // MARK: - Exercise cards
+
+    /// Pulled out of `body` deliberately: inlined, this call's fifteen
+    /// arguments (half of them closures) push the SwiftUI result-builder past
+    /// what the type-checker will solve in reasonable time.
+    private func card(for workoutExercise: WorkoutExercise) -> some View {
+        ExerciseCardView(
+            workoutExercise: workoutExercise,
+            allExercises: sortedExercises,
+            ghosts: ghosts(for: workoutExercise),
+            currentRestSeconds: restDuration(for: workoutExercise),
+            bodyweightKg: workout.bodyweightKg,
+            useBodyweightInVolume: currentProfile()?.useBodyweightInVolume ?? true,
+            onSetCompleted: handleCompleted,
+            onSetUncompleted: handleUncompleted,
+            onPlanChanged: {
+                try? modelContext.save()
+                refreshActivity()
+            },
+            onDropAdded: handleDropAdded,
+            onGroupWith: { partner in group(workoutExercise, with: partner) },
+            onUngroup: { ungroup(workoutExercise) },
+            onRemove: { remove(workoutExercise) },
+            onShowDetail: { detailExercise = workoutExercise.exercise },
+            onSetRestConfig: { seconds, saveAsDefault in
+                applyRestConfig(workoutExercise, seconds: seconds, saveAsDefault: saveAsDefault)
+            }
+        )
     }
 
     // MARK: - Header
@@ -287,7 +334,7 @@ struct ActiveWorkoutView: View {
 
     // MARK: - Set completion
 
-    private func handleCompleted(_ workoutExercise: WorkoutExercise, _ setLog: SetLog, hasPendingDrop: Bool) {
+    private func handleCompleted(_ workoutExercise: WorkoutExercise, _ setLog: SetLog) {
         recalculateCachedStats()
         recordForDetection(workoutExercise)
 
@@ -295,36 +342,57 @@ struct ActiveWorkoutView: View {
         // start a rest period (see the `UserProfile.autoStartRestTimer` doc
         // comment for why there's no manual-start fallback in V1).
         let autoStartEnabled = currentProfile()?.autoStartRestTimer ?? true
-        if autoStartEnabled, WorkoutEngine.shouldStartRest(after: workoutExercise, hasPendingDrop: hasPendingDrop, allExercises: sortedExercises) {
-            let now = Date()
-            setLog.restStartedAt = now
-            restingExerciseID = workoutExercise.id
-            restStartedAt = now
-            restAdjustSeconds = 0
-            restStartedWhileBackgrounded = false
-            scheduleRestNotification(for: workoutExercise)
+        if autoStartEnabled, WorkoutEngine.shouldStartRest(after: setLog, in: workoutExercise, allExercises: sortedExercises) {
+            startRest(for: workoutExercise, setLog: setLog)
         }
         try? modelContext.save()
+        refreshActivity()
+    }
+
+    /// M6 §9.2: the end instant is computed once, here, and written to the
+    /// `Workout` — every other consumer (bar, notification, island) reads it
+    /// rather than re-deriving a duration of its own.
+    private func startRest(for workoutExercise: WorkoutExercise, setLog: SetLog) {
+        let now = Date()
+        let duration = max(restDuration(for: workoutExercise), 15)
+        setLog.restStartedAt = now
+        workout.restingExerciseID = workoutExercise.id
+        workout.restStartedAt = now
+        workout.restEndsAt = now.addingTimeInterval(TimeInterval(duration))
+        restStartedWhileBackgrounded = false
+        scheduleRestNotification(for: workoutExercise)
+    }
+
+    /// §7.5 −15s/+15s. Floors at 15s from now so "−15s" on a nearly-expired
+    /// timer can't push the end instant into the past, which would fire the
+    /// completion path mid-gesture.
+    private func adjustRest(by delta: Int, for workoutExercise: WorkoutExercise) {
+        guard let current = workout.restEndsAt else { return }
+        workout.restEndsAt = max(current.addingTimeInterval(TimeInterval(delta)), Date().addingTimeInterval(15))
+        rescheduleRestNotification(for: workoutExercise)
     }
 
     private func handleUncompleted(_ workoutExercise: WorkoutExercise, _ setLog: SetLog) {
         recalculateCachedStats()
-        if restingExerciseID == workoutExercise.id {
+        if workout.restingExerciseID == workoutExercise.id {
             clearRest()
         }
         try? modelContext.save()
+        refreshActivity()
     }
 
     /// §7.9: a drop was just added under a set on this exercise — the chain
     /// isn't over, so any rest already ticking for it is stale. Unlike the
     /// superset round check, this fires regardless of round state: an open
-    /// drop chain always wins (`shouldStartRest`'s `hasPendingDrop` gate is
-    /// the same rule at tick time; this is its mirror at add-time, for the
-    /// case where the tick already started a timer before the drop existed).
+    /// drop chain always wins (`shouldStartRest`'s drop gate is the same rule
+    /// at tick time; this is its mirror at add-time, for the case where the
+    /// tick already started a timer before the drop existed).
     private func handleDropAdded(_ workoutExercise: WorkoutExercise) {
-        if restingExerciseID == workoutExercise.id {
+        if workout.restingExerciseID == workoutExercise.id {
             clearRest()
         }
+        try? modelContext.save()
+        refreshActivity()
     }
 
     private func recalculateCachedStats() {
@@ -339,22 +407,22 @@ struct ActiveWorkoutView: View {
     /// site) is what makes that cancellation airtight: nothing can end a
     /// rest period without also going through this.
     private func clearRest() {
-        restingExerciseID = nil
-        restStartedAt = nil
-        restAdjustSeconds = 0
+        workout.restingExerciseID = nil
+        workout.restStartedAt = nil
+        workout.restEndsAt = nil
         restStartedWhileBackgrounded = false
         pendingRestContent = nil
         RestNotificationScheduler.cancelPending()
     }
 
     private func checkRestExpiry() {
-        guard let restingExercise, let restStartedAt else { return }
-        let duration = max(restDuration(for: restingExercise) + restAdjustSeconds, 15)
-        guard Date() >= restStartedAt.addingTimeInterval(TimeInterval(duration)) else { return }
+        guard let restEndsAt = workout.restEndsAt, Date() >= restEndsAt else { return }
+        let elapsed = Int(restEndsAt.timeIntervalSince(workout.restStartedAt ?? restEndsAt))
 
         let completedWhileBackgrounded = restStartedWhileBackgrounded
-        let content = pendingRestContent ?? .init(durationSeconds: duration, nextLine: nil)
+        let content = pendingRestContent ?? .init(durationSeconds: elapsed, nextLine: nil)
         clearRest()
+        refreshActivity()
 
         if completedWhileBackgrounded {
             // The system notification (if permission was already granted)
@@ -376,11 +444,10 @@ struct ActiveWorkoutView: View {
     // MARK: - Rest notification scheduling (§7.5)
 
     private func scheduleRestNotification(for workoutExercise: WorkoutExercise) {
-        guard let restStartedAt else { return }
-        let duration = max(restDuration(for: workoutExercise) + restAdjustSeconds, 15)
-        let fireDate = restStartedAt.addingTimeInterval(TimeInterval(duration))
+        guard let fireDate = workout.restEndsAt else { return }
+        let duration = Int(fireDate.timeIntervalSince(workout.restStartedAt ?? Date()))
         let next = WorkoutEngine.nextSet(after: workoutExercise, allExercises: sortedExercises, ghostsProvider: ghosts(for:))
-        let nextLine = next.map { "\($0.exerciseName) · Set \($0.setNumber) · \(formattedWeight($0.weightKg)) kg × \($0.reps)" }
+        let nextLine = next.map { "\($0.exerciseName) · \($0.positionLabel) · \(formattedWeight($0.weightKg)) kg × \($0.reps)" }
         let content = RestNotificationScheduler.Content(durationSeconds: duration, nextLine: nextLine)
         pendingRestContent = content
         RestNotificationScheduler.schedule(fireAt: fireDate, content: content)
@@ -391,7 +458,7 @@ struct ActiveWorkoutView: View {
     /// notification is cancelled (inside `schedule`) and a fresh one takes
     /// its place — not just cancelled outright.
     private func rescheduleRestNotification(for workoutExercise: WorkoutExercise) {
-        guard restingExerciseID == workoutExercise.id else { return }
+        guard workout.restingExerciseID == workoutExercise.id else { return }
         scheduleRestNotification(for: workoutExercise)
     }
 
@@ -523,7 +590,7 @@ struct ActiveWorkoutView: View {
 
     private func remove(_ workoutExercise: WorkoutExercise) {
         let group = workoutExercise.supersetGroup
-        if restingExerciseID == workoutExercise.id { clearRest() }
+        if workout.restingExerciseID == workoutExercise.id { clearRest() }
         modelContext.delete(workoutExercise)
         if let group { SupersetGrouping.dissolveIfSingle(group, among: sortedExercises) }
     }
@@ -552,6 +619,8 @@ struct ActiveWorkoutView: View {
         // A pending rest notification would otherwise fire for a workout
         // that's already over, pointing at a "next set" nobody's doing.
         clearRest()
+        // §7 row 28: ended immediately, no FINISHED presentation.
+        LiveActivityController.shared.end()
         workout.endedAt = Date()
         recalculateCachedStats()
         // PRD §13.4: PR detection runs once, here, so Best Session Volume
@@ -563,6 +632,11 @@ struct ActiveWorkoutView: View {
         PersonalRecordDetector.detect(workout: workout, context: modelContext)
         updateRoutineBaseline()
         try? modelContext.save()
+        // PRD §10.2 "Write workout sessions." Detached from the save above on
+        // purpose: the workout is already durable locally, so a Health write
+        // that's slow, unauthorized, or failing must never delay the summary
+        // screen or surface an error (§9.7 silent fallback).
+        Task { await HealthKitManager.writeWorkout(workout) }
         showingSummary = true
     }
 

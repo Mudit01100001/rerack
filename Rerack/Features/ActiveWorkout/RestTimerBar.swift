@@ -1,19 +1,19 @@
 import SwiftUI
 
-/// PRD §7.5: wall-clock based — computed from `restStartedAt` + a duration,
-/// not a running counter, so backgrounding can't cause drift. Uses
+/// PRD §7.5: wall-clock based — driven by an absolute end instant, not a
+/// running counter, so backgrounding can't cause drift. Uses
 /// `Text(timerInterval:)` / `ProgressView(timerInterval:)`, which redraw
-/// natively with zero app-driven updates — the same mechanism the future
-/// Live Activity countdown will use (§8.7), just in an ordinary view here.
+/// natively with zero app-driven updates — the same mechanism the Live
+/// Activity countdown uses (§8.7), just in an ordinary view here.
+///
+/// Since M6 §9.2 both the start and end instants come from `Workout`, so this
+/// bar, the local notification, and the island all count down to the same
+/// moment rather than each deriving one from a duration of their own.
 struct RestTimerBar: View {
     let restStartedAt: Date
-    let durationSeconds: Int
+    let restEndsAt: Date
     let onSkip: () -> Void
     let onAdjust: (Int) -> Void
-
-    private var endDate: Date {
-        restStartedAt.addingTimeInterval(TimeInterval(max(durationSeconds, 1)))
-    }
 
     var body: some View {
         VStack(spacing: 6) {
@@ -21,10 +21,10 @@ struct RestTimerBar: View {
                 Text("Resting")
                     .font(.caption.bold())
                 Spacer()
-                Text(timerInterval: restStartedAt...endDate, countsDown: true)
+                Text(timerInterval: restStartedAt...restEndsAt, countsDown: true)
                     .font(.caption.monospacedDigit())
             }
-            ProgressView(timerInterval: restStartedAt...endDate, countsDown: false)
+            ProgressView(timerInterval: restStartedAt...restEndsAt, countsDown: false)
                 .tint(.accentColor)
             HStack {
                 Button("−15s") { onAdjust(-15) }

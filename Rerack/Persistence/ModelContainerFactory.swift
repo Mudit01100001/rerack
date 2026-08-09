@@ -3,6 +3,12 @@ import SwiftData
 
 /// PRD §12.2. Builds the one SwiftData container the whole app runs on.
 enum ModelContainerFactory {
+    /// The process-wide container. M6: a `LiveActivityIntent` performs in the
+    /// app's process (§P7) — possibly while the app is alive with its UI on
+    /// this same store — so both must share one container rather than each
+    /// opening the SQLite file behind the other's back.
+    static let shared = makeContainer()
+
     static func makeContainer() -> ModelContainer {
         let schema = Schema([
             Exercise.self,

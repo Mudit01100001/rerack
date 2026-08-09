@@ -30,7 +30,14 @@ struct SetRowView: View {
 
     /// PRD §4 Principle 5: grey means suggestion, black means fact — with no
     /// exceptions. This is the one flag that decides which it is.
-    private var showsAsGhost: Bool { !isCompleted && !hasEdited && (ghost != nil || dropPrefillWeightKg != nil) }
+    ///
+    /// An *un-ticked* `existingSet` counts as a suggestion too. Since M6 §9.3
+    /// a drop row exists in the database from the moment it's added, so row
+    /// existence no longer implies "this happened" — only `isCompleted` does.
+    private var showsAsGhost: Bool {
+        guard !isCompleted, !hasEdited else { return false }
+        return ghost != nil || dropPrefillWeightKg != nil || existingSet != nil
+    }
 
     var body: some View {
         HStack(spacing: 8) {
@@ -117,8 +124,12 @@ struct SetRowView: View {
     private func populate() {
         if let existingSet {
             weightText = formatted(existingSet.addedWeightKg)
-            repsText = String(existingSet.reps)
-            hasEdited = true
+            // §7.9: reps genuinely vary set-to-set on a drop, so an un-ticked
+            // drop added by hand carries `reps == 0` as "not guessed yet"
+            // rather than a fact-shaped lie (Principle 5). A reproduced chain
+            // does carry last session's reps, and shows them.
+            repsText = (!existingSet.isCompleted && existingSet.reps == 0) ? "" : String(existingSet.reps)
+            hasEdited = existingSet.isCompleted
         } else if let ghost {
             weightText = formatted(ghost.weightKg)
             repsText = String(ghost.reps)

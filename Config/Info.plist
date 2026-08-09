@@ -18,11 +18,28 @@
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>1.0</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.mudit.logbook</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>rerack</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Reads your bodyweight and body-fat history from Health to chart your Measures and fold bodyweight into set volume for bodyweight exercises.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Writes your finished workouts to Health as strength-training sessions.</string>
+	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>

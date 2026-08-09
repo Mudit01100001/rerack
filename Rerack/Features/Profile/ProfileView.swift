@@ -47,6 +47,8 @@ struct ProfileView: View {
     /// row is expected to exist" without forcing a migration step.
     @State private var ensuredProfile: UserProfile?
     @State private var showingRestPicker = false
+    @State private var exportedFileURL: URL?
+    @State private var showingExportSheet = false
 
     private var appearanceMode: Binding<AppearanceMode> {
         Binding(
@@ -78,6 +80,7 @@ struct ProfileView: View {
 
                 if let profile = ensuredProfile {
                     workoutSection(profile)
+                    healthSection(profile)
                 }
 
                 Section("Dashboard") {
@@ -96,13 +99,43 @@ struct ProfileView: View {
                     } label: {
                         Label("Calendar", systemImage: "calendar")
                     }
-                    // Measures needs HealthKit bodyweight / body fat — M9.
-                    dashboardRow("Measures", systemImage: "scalemass")
+                    NavigationLink {
+                        MeasuresView()
+                    } label: {
+                        Label("Measures", systemImage: "scalemass")
+                    }
+                }
+
+                Section("Data") {
+                    Button {
+                        export { CSVExporter.exportWorkouts(context: modelContext) }
+                    } label: {
+                        Label("Export All Data (CSV)", systemImage: "square.and.arrow.up")
+                    }
+                    Button {
+                        export { CSVExporter.exportMeasures(context: modelContext) }
+                    } label: {
+                        Label("Export Measures (CSV)", systemImage: "square.and.arrow.up")
+                    }
                 }
             }
             .navigationTitle("Profile")
         }
         .task { ensureProfile() }
+        .sheet(isPresented: $showingExportSheet) {
+            if let exportedFileURL {
+                ActivityShareSheet(items: [exportedFileURL])
+            }
+        }
+    }
+
+    /// PRD §14: "delivery: system share sheet. Nothing leaves the device
+    /// unless you send it" — the file is written once, on demand, never
+    /// pre-generated or cached across launches.
+    private func export(_ makeFile: () -> URL?) {
+        guard let url = makeFile() else { return }
+        exportedFileURL = url
+        showingExportSheet = true
     }
 
     // MARK: - Header & activity graph (PRD §9.6)
@@ -227,6 +260,27 @@ struct ProfileView: View {
         }
     }
 
+    /// PRD §10.2 Apple Health. The toggle only affects sets completed from
+    /// here on — §13.1 snapshots `effectiveLoadKg` at tick time precisely so
+    /// flipping this can't retroactively rewrite past volume, and the footer
+    /// says so rather than leaving people to discover it.
+    private func healthSection(_ profile: UserProfile) -> some View {
+        Section {
+            Toggle("Use bodyweight in volume maths", isOn: Binding(
+                get: { profile.useBodyweightInVolume },
+                set: { profile.useBodyweightInVolume = $0 }
+            ))
+            Button("Connect Apple Health") {
+                Task { await HealthKitManager.requestAuthorization() }
+            }
+            .disabled(!HealthKitManager.isAvailable)
+        } header: {
+            Text("Apple Health")
+        } footer: {
+            Text("Bodyweight exercises count \(profile.useBodyweightInVolume ? "your bodyweight plus" : "only") the weight you add. Changing this affects future sets only — past workouts keep the numbers they were logged with.")
+        }
+    }
+
     private func ensureProfile() {
         if let existing = profiles.first {
             ensuredProfile = existing
@@ -238,16 +292,6 @@ struct ProfileView: View {
         }
     }
 
-    private func dashboardRow(_ title: String, systemImage: String) -> some View {
-        HStack {
-            Label(title, systemImage: systemImage)
-            Spacer()
-            Text("Soon")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-        }
-        .foregroundStyle(.secondary)
-    }
 }
 
 #Preview {

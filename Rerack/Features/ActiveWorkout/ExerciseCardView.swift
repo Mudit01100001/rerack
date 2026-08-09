@@ -1,19 +1,6 @@
 import SwiftUI
 import SwiftData
 
-/// §7.9: a drop row the user has swiped "+ Drop" onto but not yet ticked.
-/// Pure view state, same invariant as a ghost set (§7.3) — it never touches
-/// the database until completed. `parentSetID` is always the *root* set of
-/// the chain (the completed normal set), even when added from an existing
-/// drop further down — PRD's data model is one parent with drops chained
-/// off it, not a nested tree, so every drop in a chain shares one ID to
-/// filter by.
-private struct PendingDrop: Identifiable {
-    let id = UUID()
-    let parentSetID: UUID
-    let prefillWeightKg: Double
-}
-
 /// PRD §7.1/§7.2/§7.4/§7.9. Row count = `max(ghosts + manually-added rows,
 /// completed sets, 1)` — ghost rows past the completed count are pure view
 /// state (§7.3) and never touch the database until ticked or edited. Drop
@@ -28,11 +15,18 @@ struct ExerciseCardView: View {
     /// it opens on "what would apply right now," not some fixed default.
     let currentRestSeconds: Int
 
-    /// `Bool` is `hasPendingDrop` (§7.9) — whether the completed set still
-    /// has an uncommitted drop row waiting under it, so the caller can feed
-    /// it straight into `WorkoutEngine.shouldStartRest`.
-    let onSetCompleted: (WorkoutExercise, SetLog, _ hasPendingDrop: Bool) -> Void
+    /// §13.1: the workout's bodyweight snapshot and the user's "use bodyweight
+    /// in volume maths" preference, resolved once by the caller rather than
+    /// re-fetched per set tick.
+    let bodyweightKg: Double?
+    let useBodyweightInVolume: Bool
+
+    let onSetCompleted: (WorkoutExercise, SetLog) -> Void
     let onSetUncompleted: (WorkoutExercise, SetLog) -> Void
+    /// M6 §7 rows 20–22: any change to the *plan* — add set, delete set,
+    /// delete a drop — moves the pointer without completing anything, and the
+    /// Live Activity must be told or it renders a set that no longer exists.
+    let onPlanChanged: () -> Void
     /// §7.9: a drop was just added under an already-resting set — the caller
     /// cancels any rest timer running for this exercise, since the chain it
     /// belongs to is no longer "over."
@@ -46,10 +40,8 @@ struct ExerciseCardView: View {
     let onSetRestConfig: (_ seconds: Int, _ saveAsDefault: Bool) -> Void
 
     @Environment(\.modelContext) private var modelContext
-    @State private var extraRows = 0
     @State private var showingGroupPicker = false
     @State private var showingRestPicker = false
-    @State private var pendingDrops: [PendingDrop] = []
 
     /// Every top-level set row that exists in the store, completed or not —
     /// drops are rendered as children of these (§7.9), so they stay out of
@@ -75,8 +67,12 @@ struct ExerciseCardView: View {
         topLevelSets.filter(\.isCompleted).count
     }
 
+    /// M6 §9.1: `plannedSetCount` is the persisted replacement for what used
+    /// to be a `@State extraRows` counter. Unset means "however many ghosts
+    /// resolve," so a routine-driven exercise needs nothing written until
+    /// `+ Add Set` is actually tapped.
     private var rowCount: Int {
-        max(ghosts.count + extraRows, completedSetCount, 1)
+        max(workoutExercise.plannedSetCount ?? ghosts.count, completedSetCount, 1)
     }
 
     private var supersetLabel: String? {
@@ -134,22 +130,24 @@ struct ExerciseCardView: View {
                 // Only a *completed* row is passed as `existingSet` — an
                 // un-ticked one reverts to its ghost, per §7.2/§7.3.
                 let topSet = setLog(at: index).flatMap { $0.isCompleted ? $0 : nil }
+                let rowGhost = GhostSetResolver.ghostSet(at: index, in: ghosts)
                 SetRowView(
                     orderIndex: index,
                     existingSet: topSet,
-                    ghost: GhostSetResolver.ghostSet(at: index, in: ghosts),
+                    ghost: rowGhost,
                     onComplete: { weight, reps in complete(index: index, weight: weight, reps: reps) },
                     onUncomplete: { uncomplete(index: index) },
                     onDeleteExisting: { deleteExisting(index: index) },
                     onAddDrop: topSet.map { parent in { addDrop(from: parent) } }
                 )
                 if let topSet {
-                    dropChainRows(under: topSet)
+                    dropChainRows(under: topSet, ghostDrops: rowGhost?.drops ?? [])
                 }
             }
 
             Button {
-                extraRows += 1
+                workoutExercise.plannedSetCount = rowCount + 1
+                onPlanChanged()
             } label: {
                 Label("Add Set", systemImage: "plus")
                     .font(.subheadline)
@@ -175,64 +173,102 @@ struct ExerciseCardView: View {
 
     // MARK: - Drop chains (§7.9)
 
-    /// Renders a parent's committed drops, then any still-pending (unticked)
-    /// ones underneath — same top-to-bottom order they were added in.
+    /// Renders a parent's drop chain. Every row here is a real `SetLog`,
+    /// ticked or not (M6 §9.3) — including the ones reproduced from last
+    /// session's chain, which `materialiseGhostDrops` inserts the moment the
+    /// parent is ticked. An un-ticked row still *reads* as a suggestion
+    /// (grey, §7.3) because `SetRowView` styles on `isCompleted`, not on
+    /// whether a row exists.
     @ViewBuilder
-    private func dropChainRows(under parent: SetLog) -> some View {
-        let committed = (workoutExercise.sets ?? [])
-            .filter { $0.parentSetID == parent.id }
-            .sorted { $0.orderIndex < $1.orderIndex }
-        ForEach(committed) { drop in
+    private func dropChainRows(under parent: SetLog, ghostDrops: [GhostSet]) -> some View {
+        let chain = drops(of: parent)
+        ForEach(Array(chain.enumerated()), id: \.element.id) { position, drop in
             SetRowView(
                 orderIndex: 0,
                 existingSet: drop,
-                ghost: nil,
+                ghost: position < ghostDrops.count ? ghostDrops[position] : nil,
                 isDrop: true,
-                onComplete: { _, _ in }, // already committed; only un-tick applies
+                onComplete: { weight, reps in completeDrop(drop, weight: weight, reps: reps) },
                 onUncomplete: { uncompleteDrop(drop) },
                 onDeleteExisting: { deleteDrop(drop) },
                 onAddDrop: drop.isCompleted ? { addDrop(from: drop) } : nil
             )
         }
-        ForEach(pendingDrops.filter { $0.parentSetID == parent.id }) { pending in
-            SetRowView(
-                orderIndex: 0,
-                existingSet: nil,
-                ghost: nil,
-                isDrop: true,
-                dropPrefillWeightKg: pending.prefillWeightKg,
-                onComplete: { weight, reps in completePendingDrop(pending, weight: weight, reps: reps) },
-                onUncomplete: {},
-                onDeleteExisting: { pendingDrops.removeAll { $0.id == pending.id } }
-            )
-        }
+    }
+
+    private func drops(of parent: SetLog) -> [SetLog] {
+        (workoutExercise.sets ?? [])
+            .filter { $0.parentSetID == parent.id }
+            .sorted { $0.orderIndex < $1.orderIndex }
     }
 
     /// PRD §7.9/§15: only reachable from a completed row (`SetRowView`
     /// withholds `onAddDrop` otherwise), so the parent-must-be-ticked edge
     /// case is enforced by construction rather than checked here again.
-    /// `parentSetID` is always the chain's root — see `PendingDrop`.
+    ///
+    /// M6 §9.3: the row is inserted **now**, unticked, rather than held as
+    /// view state until it's ticked. Three things follow — the widget process
+    /// can see an open chain (so the island can render `Drop 1 of 2` and
+    /// suppress rest), `WorkoutEngine` can compute `hasPendingDrop` itself
+    /// instead of taking it on trust from a caller, and an un-ticked drop
+    /// survives a force-quit instead of silently vanishing on relaunch, which
+    /// was a real data-loss bug against Principle 4 ("never lose a set").
+    ///
+    /// `parentSetID` is always the chain's root — PRD's model is one parent
+    /// with drops chained off it, not a nested tree, so adding a drop from an
+    /// existing drop still points at the original top-level set.
     private func addDrop(from setLog: SetLog) {
         let rootID = setLog.parentSetID ?? setLog.id
-        let prefill = DropSetMath.prefillWeightKg(fromParent: setLog.addedWeightKg)
-        pendingDrops.append(PendingDrop(parentSetID: rootID, prefillWeightKg: prefill))
+        let drop = SetLog(
+            orderIndex: (workoutExercise.sets ?? []).count,
+            setType: .drop,
+            addedWeightKg: DropSetMath.prefillWeightKg(fromParent: setLog.addedWeightKg),
+            reps: 0
+        )
+        drop.parentSetID = rootID
+        modelContext.insert(drop)
+        drop.workoutExercise = workoutExercise
         // The chain this belongs to is no longer "over" — cancel any rest
         // already running for this exercise (§7.5/§7.9).
         onDropAdded(workoutExercise)
     }
 
-    private func completePendingDrop(_ pending: PendingDrop, weight: Double, reps: Int) {
-        let setLog = SetLog(orderIndex: (workoutExercise.sets ?? []).count, setType: .drop, addedWeightKg: weight, reps: reps)
-        setLog.parentSetID = pending.parentSetID
-        // TODO M9 (§13.1): see the matching TODO in `complete(index:)`.
-        setLog.effectiveLoadKg = weight
-        setLog.isCompleted = true
-        setLog.completedAt = Date()
-        modelContext.insert(setLog)
-        setLog.workoutExercise = workoutExercise
-        pendingDrops.removeAll { $0.id == pending.id }
-        let hasPendingDrop = pendingDrops.contains { $0.parentSetID == pending.parentSetID }
-        onSetCompleted(workoutExercise, setLog, hasPendingDrop)
+    /// §13.1, snapshotted into `SetLog.effectiveLoadKg` at completion time and
+    /// never recomputed afterwards.
+    private func effectiveLoad(addedWeightKg: Double) -> Double {
+        EffectiveLoad.kg(
+            addedWeightKg: addedWeightKg,
+            loadType: workoutExercise.exercise?.loadType ?? .external,
+            bodyweightFactor: workoutExercise.exercise?.bodyweightFactor ?? 0,
+            bodyweightKg: bodyweightKg,
+            useBodyweightInVolume: useBodyweightInVolume
+        )
+    }
+
+    /// Ticking a drop row that already exists in the store (M6 §9.3) — every
+    /// manually-added drop takes this path.
+    private func completeDrop(_ drop: SetLog, weight: Double, reps: Int) {
+        drop.addedWeightKg = weight
+        drop.reps = reps
+        drop.effectiveLoadKg = effectiveLoad(addedWeightKg: weight)
+        drop.isCompleted = true
+        drop.completedAt = Date()
+        onSetCompleted(workoutExercise, drop)
+    }
+
+    /// PRD §7.9 closing bullet: ticking a ghost-reproduced drop materialises
+    /// it, exactly like ticking a top-level ghost row materialises that.
+    /// `orderIndex` is only an insertion counter shared with top-level sets —
+    /// it's never used to address a drop, only to order one chain internally.
+    private func completeGhostDrop(parentSetID: UUID, weight: Double, reps: Int) {
+        let drop = SetLog(orderIndex: (workoutExercise.sets ?? []).count, setType: .drop, addedWeightKg: weight, reps: reps)
+        drop.parentSetID = parentSetID
+        drop.effectiveLoadKg = effectiveLoad(addedWeightKg: weight)
+        drop.isCompleted = true
+        drop.completedAt = Date()
+        modelContext.insert(drop)
+        drop.workoutExercise = workoutExercise
+        onSetCompleted(workoutExercise, drop)
     }
 
     private func uncompleteDrop(_ drop: SetLog) {
@@ -244,6 +280,7 @@ struct ExerciseCardView: View {
 
     private func deleteDrop(_ drop: SetLog) {
         modelContext.delete(drop)
+        onPlanChanged()
     }
 
     private func complete(index: Int, weight: Double, reps: Int) {
@@ -259,16 +296,32 @@ struct ExerciseCardView: View {
         }
         setLog.addedWeightKg = weight
         setLog.reps = reps
-        // TODO M9 (§13.1): effectiveLoadKg should fold in bodyweight ×
-        // factor for bodyweight/weighted/assisted exercises once Health
-        // integration exists. External-load exercises are already correct.
-        setLog.effectiveLoadKg = weight
+        setLog.effectiveLoadKg = effectiveLoad(addedWeightKg: weight)
         setLog.isCompleted = true
         setLog.completedAt = Date()
-        // §7.9: this set's own chain is open if a drop is already pending
-        // under it (e.g. "+ Drop" was tapped before the tick landed).
-        let hasPendingDrop = pendingDrops.contains { $0.parentSetID == setLog.id }
-        onSetCompleted(workoutExercise, setLog, hasPendingDrop)
+        // §7.9 closing bullet: reproduce last session's drop chain as real
+        // un-ticked rows the moment the parent is ticked. Materialising here
+        // rather than rendering ghost rows is what lets `WorkoutEngine` see
+        // the open chain (and so suppress rest) without a second "is a ghost
+        // chain pending" mechanism running alongside the real one.
+        materialiseGhostDrops(under: setLog, at: index)
+        onSetCompleted(workoutExercise, setLog)
+    }
+
+    private func materialiseGhostDrops(under parent: SetLog, at index: Int) {
+        guard drops(of: parent).isEmpty else { return }
+        let ghostDrops = GhostSetResolver.ghostSet(at: index, in: ghosts)?.drops ?? []
+        for (offset, ghostDrop) in ghostDrops.enumerated() {
+            let drop = SetLog(
+                orderIndex: (workoutExercise.sets ?? []).count + offset,
+                setType: .drop,
+                addedWeightKg: ghostDrop.weightKg,
+                reps: ghostDrop.reps
+            )
+            drop.parentSetID = parent.id
+            modelContext.insert(drop)
+            drop.workoutExercise = workoutExercise
+        }
     }
 
     private func uncomplete(index: Int) {
@@ -294,5 +347,6 @@ struct ExerciseCardView: View {
         for (i, log) in topLevelSets.enumerated() where log.orderIndex != i {
             log.orderIndex = i
         }
+        onPlanChanged()
     }
 }
