@@ -42,12 +42,9 @@ struct WorkoutTabView: View {
             List {
                 Section {
                     startRow
-                        // Zero insets so the row *is* the card: the padding
-                        // that separates the buttons from its edge is applied
-                        // inside `startRow`, which is what makes the
-                        // concentric radius maths hold.
-                        .listRowInsets(EdgeInsets())
-                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets(
+                            top: cardInset, leading: cardInset, bottom: cardInset, trailing: cardInset
+                        ))
                         .listRowSeparator(.hidden)
                 }
 
@@ -104,14 +101,18 @@ struct WorkoutTabView: View {
     /// One row, two intents: build something reusable, or just start logging.
     /// Quick Start is the filled one because it's the only action here that
     /// begins a session.
-    /// Outer radius = inner radius + padding. With both at the same value the
-    /// gap between the curves reads as uneven and the buttons look wedged
-    /// into the corners, which is exactly what was wrong here.
-    private var startRow: some View {
-        let padding = DS.Space.xs
-        let innerRadius = DS.concentricRadius(outer: DS.Radius.large, inset: padding)
+    /// Padding between the system section's edge and the buttons inside it.
+    private let cardInset: CGFloat = DS.Space.xs
 
-        return HStack(spacing: padding) {
+    /// The outer container is the ordinary grouped-list section, same as every
+    /// other card on this screen — only the buttons' radius is ours to set.
+    /// Inner = outer − padding, where outer is the system section radius
+    /// (`DS.Radius.medium`), so the curves stay parallel without redrawing the
+    /// card itself.
+    private var startRow: some View {
+        let innerRadius = DS.concentricRadius(outer: DS.Radius.medium, inset: cardInset)
+
+        return HStack(spacing: cardInset) {
             Button {
                 createRoutine()
             } label: {
@@ -134,10 +135,6 @@ struct WorkoutTabView: View {
             .disabled(coordinator.liveWorkout != nil)
             .opacity(coordinator.liveWorkout != nil ? 0.45 : 1)
         }
-        .padding(padding)
-        .dsCard()
-        .padding(.horizontal, DS.Space.md)
-        .padding(.vertical, DS.Space.xxs)
     }
 
     /// The split title *is* the switcher, with Edit beside it.

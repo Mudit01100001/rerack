@@ -97,21 +97,27 @@ private struct LiveWorkoutAccessory: ViewModifier {
     }
 
     func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
-            content.tabViewBottomAccessory {
-                if isShowing {
+        // The branch has to be on whether the modifier is applied *at all*,
+        // not on what it returns. `tabViewBottomAccessory` reserves and draws
+        // its container as soon as it's attached, so returning an empty view
+        // from inside it left a permanent blank pill docked above the tab bar
+        // with no workout running.
+        if isShowing {
+            if #available(iOS 26.0, *) {
+                content.tabViewBottomAccessory {
                     ActiveWorkoutBanner(coordinator: coordinator)
                 }
-            }
-        } else {
-            content.safeAreaInset(edge: .bottom) {
-                if isShowing {
+            } else {
+                content.safeAreaInset(edge: .bottom) {
                     ActiveWorkoutBanner(coordinator: coordinator)
                         // Clears the floating tab bar, which the inset
                         // otherwise lets the pill sit on top of.
+                        .padding(.horizontal, DS.Space.md)
                         .padding(.bottom, DS.Space.xl + DS.Space.lg)
                 }
             }
+        } else {
+            content
         }
     }
 }

@@ -32,6 +32,13 @@ struct RoutineListView: View {
                 onDuplicate: { duplicate(routine) },
                 onDelete: { modelContext.delete(routine) }
             )
+            // By default the separator indents to align with whatever SwiftUI
+            // decides the row's content edge is, which on these rows landed
+            // well right of the title and read as misaligned. Pin it to the
+            // row's own leading edge so it lines up with the text above it.
+            .alignmentGuide(.listRowSeparatorLeading) { dimensions in
+                dimensions[.leading]
+            }
         }
         // Reorder and delete live in Edit mode (the button sits beside the
         // split name). Reordering reuses only the indices this group already

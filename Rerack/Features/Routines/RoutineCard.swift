@@ -30,40 +30,52 @@ struct RoutineCard: View {
 
     private var canStart: Bool { !exercises.isEmpty && !isStartDisabled }
 
+    @Environment(\.editMode) private var editMode
+
+    private var isEditing: Bool { editMode?.wrappedValue.isEditing == true }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: DS.Space.xxs + 2) {
             Text(routine.name)
-                .font(.headline)
+                .dsFont(DS.TypeScale.body, relativeTo: .headline, weight: .semibold)
 
-            HStack(spacing: 4) {
-                Text("\(exercises.count) exercise\(exercises.count == 1 ? "" : "s")")
-                if !derivedMuscles.isEmpty {
-                    Text("·")
-                    Text(derivedMuscles.prefix(3).map(\.displayName).joined(separator: ", "))
-                        .lineLimit(1)
+            // While editing, the row is a thing you're *moving*, not one
+            // you're reading. Exercise count, muscles, last-performed and the
+            // Start button all collapse — the drag handle needs a short,
+            // uniform row to sit against, and none of that detail helps you
+            // decide where a day belongs in the week.
+            if !isEditing {
+                HStack(spacing: DS.Space.xxs) {
+                    Text("\(exercises.count) exercise\(exercises.count == 1 ? "" : "s")")
+                    if !derivedMuscles.isEmpty {
+                        Text("·")
+                        Text(derivedMuscles.prefix(3).map(\.displayName).joined(separator: ", "))
+                            .lineLimit(1)
+                    }
                 }
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
+                .dsFont(DS.TypeScale.caption, relativeTo: .caption)
+                .foregroundStyle(.secondary)
 
-            if let last = routine.lastPerformedAt {
-                Text("Last: \(last.formatted(.relative(presentation: .named)))")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
+                if let last = routine.lastPerformedAt {
+                    Text("Last: \(last.formatted(.relative(presentation: .named)))")
+                        .dsFont(DS.TypeScale.caption2, relativeTo: .caption2)
+                        .foregroundStyle(.tertiary)
+                }
 
-            Button(action: onStart) {
-                Label("Start Workout", systemImage: "play.fill")
-                    .font(.subheadline)
+                Button(action: onStart) {
+                    Label("Start Workout", systemImage: "play.fill")
+                        .dsFont(DS.TypeScale.caption, relativeTo: .subheadline, weight: .medium)
+                }
+                .buttonStyle(.bordered)
+                .disabled(!canStart)
+                .padding(.top, 2)
             }
-            .buttonStyle(.bordered)
-            .disabled(!canStart)
-            .padding(.top, 2)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, DS.Space.xxs)
         .contentShape(Rectangle())
         .onTapGesture {
-            if canStart { onStart() }
+            guard !isEditing, canStart else { return }
+            onStart()
         }
         .contextMenu {
             Button(action: onEdit) {
