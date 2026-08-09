@@ -32,6 +32,15 @@ struct WorkoutTabView: View {
                     } label: {
                         Label("New Routine", systemImage: "plus")
                     }
+                    NavigationLink {
+                        TemplateLibraryView()
+                    } label: {
+                        Label("Start from a Template", systemImage: "square.stack.3d.up")
+                    }
+                } footer: {
+                    if routines.isEmpty {
+                        Text("New here? A template drops a whole split into your library in one tap.")
+                    }
                 }
 
                 Section {
