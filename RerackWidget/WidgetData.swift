@@ -23,8 +23,13 @@ struct WidgetSnapshot {
     let currentStreakWeeks: Int
     let workoutsThisWeek: Int
     let totalWorkouts: Int
-    /// Last 5 weeks x 7 days of "did I train", oldest first, for the grid.
+    /// "Did I train" per day, oldest first, ending today. Long enough for the
+    /// widest family to fill its width; narrower ones take the tail.
     let recentDays: [Bool]
+
+    /// 18 weeks, so the medium family can fill its width without the
+    /// provider needing to know which family will render.
+    static let dayWindow = 18 * 7
 
     static let placeholder = WidgetSnapshot(
         splitName: "PPL (Advanced)",
@@ -38,7 +43,7 @@ struct WidgetSnapshot {
         currentStreakWeeks: 3,
         workoutsThisWeek: 2,
         totalWorkouts: 42,
-        recentDays: (0..<35).map { $0 % 3 == 0 }
+        recentDays: (0..<WidgetSnapshot.dayWindow).map { $0 % 3 == 0 }
     )
 }
 
@@ -103,13 +108,18 @@ enum WidgetDataSource {
         return workouts.filter { $0.startedAt >= start }.count
     }
 
-    /// 35 days ending today, oldest first.
+    /// Whole weeks ending with the one containing today, oldest first, so
+    /// every column is a real Mon-Sun week rather than a rolling 7-day
+    /// window that would put a different weekday in each row.
     private static func recentDays(_ workouts: [Workout]) -> [Bool] {
-        let calendar = Calendar.current
+        var calendar = Calendar.current
+        calendar.firstWeekday = 2
         let trained = Set(workouts.map { calendar.startOfDay(for: $0.startedAt) })
         let today = calendar.startOfDay(for: Date())
-        return (0..<35).reversed().compactMap { back in
-            calendar.date(byAdding: .day, value: -back, to: today).map { trained.contains($0) }
+        guard let thisWeekStart = calendar.dateInterval(of: .weekOfYear, for: today)?.start else { return [] }
+        guard let start = calendar.date(byAdding: .day, value: -(WidgetSnapshot.dayWindow - 7), to: thisWeekStart) else { return [] }
+        return (0..<WidgetSnapshot.dayWindow).compactMap { offset in
+            calendar.date(byAdding: .day, value: offset, to: start).map { trained.contains($0) }
         }
     }
 

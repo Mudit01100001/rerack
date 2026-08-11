@@ -57,18 +57,26 @@ private struct SelectorView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(snapshot.splitName ?? "Workouts")
-                    .font(.caption.weight(.semibold))
+            // `fixedSize` so the header can't be compressed away when the
+            // rows below want more room than the family has. Widgets don't
+            // scroll, so something has to lose, and it shouldn't be the
+            // label that says which split you're looking at.
+            HStack(spacing: 4) {
+                Text((snapshot.splitName ?? "Workouts").uppercased())
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(0.6)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                Spacer()
+                    .truncationMode(.tail)
+                Spacer(minLength: 0)
                 if snapshot.days.count > visibleDays.count {
-                    Text("+\(snapshot.days.count - visibleDays.count)")
-                        .font(.caption2)
+                    Text("+\(snapshot.days.count - visibleDays.count) more")
+                        .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
+                        .lineLimit(1)
                 }
             }
+            .fixedSize(horizontal: false, vertical: true)
 
             if snapshot.hasLiveWorkout {
                 // §6: you can't start a second workout, so don't offer to.
@@ -163,45 +171,79 @@ private struct StatsView: View {
     let snapshot: WidgetSnapshot
     @Environment(\.widgetFamily) private var family
 
+    /// How many weeks fit across. The grid then sizes its cells to whatever
+    /// space is actually available, rather than a fixed cell size that left
+    /// two-thirds of a medium widget empty.
+    private var weeks: Int { family == .systemSmall ? 7 : 17 }
+
     var body: some View {
         Link(destination: WorkoutDeepLink.workoutTab) {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("CONSISTENCY")
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(0.6)
+                    .foregroundStyle(.secondary)
+
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text("\(snapshot.currentStreakWeeks)")
-                        .font(.system(size: 30, weight: .bold, design: .rounded))
-                    Text(snapshot.currentStreakWeeks == 1 ? "week" : "weeks")
-                        .font(.caption)
+                        .font(.system(size: family == .systemSmall ? 26 : 30, weight: .bold, design: .rounded))
+                    Text(snapshot.currentStreakWeeks == 1 ? "wk streak" : "wk streak")
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
+                    if family != .systemSmall {
+                        Spacer()
+                        Text("\(snapshot.workoutsThisWeek) this week · \(snapshot.totalWorkouts) total")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
 
-                Text("\(snapshot.workoutsThisWeek) this week · \(snapshot.totalWorkouts) total")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-
-                Spacer(minLength: 0)
-                grid
+                ContributionGridView(days: snapshot.recentDays, weeks: weeks)
             }
         }
     }
+}
 
-    /// Columns are weeks, rows are weekdays — same orientation as the Home
-    /// tab's grid, so the two read as the same object at different sizes.
-    private var grid: some View {
-        let columns = stride(from: 0, to: 35, by: 7).map { Array(snapshot.recentDays[$0..<min($0 + 7, 35)]) }
-        return HStack(spacing: 3) {
-            ForEach(Array(columns.enumerated()), id: \.offset) { _, week in
-                VStack(spacing: 3) {
-                    ForEach(Array(week.enumerated()), id: \.offset) { _, trained in
-                        RoundedRectangle(cornerRadius: 2, style: .continuous)
-                            .fill(trained ? Color.accentColor : Color.primary.opacity(0.12))
-                            .frame(width: cell, height: cell)
+/// Columns are weeks, rows are weekdays — same orientation as the Home tab's
+/// grid, so the two read as one object at two sizes.
+///
+/// Cell size is derived from the space available in both axes, so the grid
+/// spans the full width of whatever family it lands in and still can't
+/// overflow vertically.
+private struct ContributionGridView: View {
+    let days: [Bool]
+    let weeks: Int
+
+    private let spacing: CGFloat = 2.5
+
+    private var columns: [[Bool]] {
+        let needed = weeks * 7
+        let tail = days.count >= needed ? Array(days.suffix(needed)) : days
+        return stride(from: 0, to: tail.count, by: 7).map {
+            Array(tail[$0..<min($0 + 7, tail.count)])
+        }
+    }
+
+    var body: some View {
+        GeometryReader { geometry in
+            let count = max(columns.count, 1)
+            let byWidth = (geometry.size.width - spacing * CGFloat(count - 1)) / CGFloat(count)
+            let byHeight = (geometry.size.height - spacing * 6) / 7
+            let cell = max(min(byWidth, byHeight), 2)
+
+            HStack(spacing: spacing) {
+                ForEach(Array(columns.enumerated()), id: \.offset) { _, week in
+                    VStack(spacing: spacing) {
+                        ForEach(Array(week.enumerated()), id: \.offset) { _, trained in
+                            RoundedRectangle(cornerRadius: cell * 0.22, style: .continuous)
+                                .fill(trained ? Color.accentColor : Color.primary.opacity(0.13))
+                                .frame(width: cell, height: cell)
+                        }
                     }
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity, alignment: family == .systemSmall ? .center : .leading)
     }
-
-    private var cell: CGFloat { family == .systemSmall ? 8 : 10 }
 }

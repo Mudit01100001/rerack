@@ -19,6 +19,7 @@ struct AddCardioSessionView: View {
     @State private var resistanceText = ""
     @State private var notes = ""
 
+    @State private var showingScanner = false
     @State private var photoItem: PhotosPickerItem?
     @State private var photoData: Data?
 
@@ -49,6 +50,15 @@ struct AddCardioSessionView: View {
                 }
 
                 Section("Numbers") {
+                    // §22.1: pre-fills this form, never submits for you. The
+                    // OCR is good enough to save typing and not good enough
+                    // to trust unread, so it lands here where you can see it.
+                    Button {
+                        showingScanner = true
+                    } label: {
+                        Label("Scan Console", systemImage: "camera.viewfinder")
+                    }
+
                     TextField("Duration (minutes)", text: $durationMinutesText)
                         .keyboardType(.numberPad)
                     TextField("Distance (km)", text: $distanceKmText)
@@ -83,6 +93,11 @@ struct AddCardioSessionView: View {
                     Text("Saved for your own record, auto-reading the numbers off it isn't built yet.")
                 }
             }
+            .sheet(isPresented: $showingScanner) {
+                ConsoleScanSheet(activity: activity) { values in
+                    applyScanned(values)
+                }
+            }
             .navigationTitle("Log Cardio")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -99,6 +114,21 @@ struct AddCardioSessionView: View {
                 }
             }
         }
+    }
+
+    /// Writes recognised numbers into the form's own fields, so everything
+    /// downstream (validation, save) behaves exactly as if they were typed.
+    /// Only overwrites what was actually read: a field the scan missed keeps
+    /// whatever you already put there.
+    private func applyScanned(_ values: [ConsoleField: Double]) {
+        func text(_ value: Double) -> String {
+            value.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(value)) : String(format: "%.2f", value)
+        }
+        if let duration = values[.duration] { durationMinutesText = text(duration) }
+        if let distance = values[.distance] { distanceKmText = text(distance) }
+        if let calories = values[.calories] { caloriesText = text(calories) }
+        if let incline = values[.incline] { inclineText = text(incline) }
+        if let resistance = values[.resistance] { resistanceText = text(resistance) }
     }
 
     private func save() {

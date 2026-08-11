@@ -64,13 +64,34 @@ struct SetRowView: View {
 
     private var tickButton: some View {
         Button(action: toggle) {
+            // §17: never colour alone. The glyph *fills* when complete, so
+            // state survives greyscale and every form of colour blindness.
             Image(systemName: isCompleted ? "checkmark.circle.fill" : "circle")
                 .dsFont(DS.TypeScale.heading, relativeTo: .title3)
                 .foregroundStyle(isCompleted ? Color.green : Color.secondary.opacity(0.6))
+                // §17 requires >= 44x44pt. The glyph is ~22pt; the frame here
+                // is the hit area, and it's the most-tapped control in the
+                // app, so it gets the full target even though the column is
+                // drawn narrower.
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .frame(width: 30)
-        .accessibilityLabel(isCompleted ? "Completed. Tap to undo." : "Log this set")
+        .accessibilityLabel(accessibilitySummary)
+        .accessibilityHint(isCompleted ? "Double tap to un-log" : "Double tap to log")
+        .accessibilityAddTraits(isCompleted ? [.isButton, .isSelected] : .isButton)
+    }
+
+    /// One spoken sentence per row. VoiceOver reading "1", "20 by 5", "20",
+    /// "5", "circle" as five separate elements is technically labelled and
+    /// practically useless mid-set, so the tick carries the whole row.
+    private var accessibilitySummary: String {
+        let position = isDrop ? "Drop set" : "Set \(orderIndex + 1)"
+        let weight = weightText.isEmpty ? "no weight" : "\(weightText) kilograms"
+        let reps = repsText.isEmpty ? "no reps" : "\(repsText) reps"
+        let state = isCompleted ? "completed" : "not logged"
+        return "\(position), \(weight), \(reps), \(state)"
     }
 
     @ViewBuilder
@@ -151,6 +172,9 @@ struct SetRowView: View {
                     .strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.5)
             )
             .onChange(of: text.wrappedValue) { _, _ in hasEdited = true }
+            // Without this VoiceOver reads a bare number with no idea which
+            // column it came from.
+            .accessibilityLabel(placeholder == "kg" ? "Weight in kilograms" : "Repetitions")
     }
 
     private func populate() {
