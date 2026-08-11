@@ -21,10 +21,18 @@ final class Exercise {
     var isCustom: Bool = false
     var defaultRestSeconds: Int?
 
-    /// PRD §6.2: exercise media is cut from the product entirely — no image,
-    /// no video. This field exists only for the text-only "How To" stub
-    /// (§9.2 Tab 3), which ships as "Coming Soon" with nothing behind it in V1.
+    /// Free-form how-to text for user-created exercises. Catalogue entries
+    /// use `instructions` below instead.
     var howToBody: String?
+
+    /// Ordered how-to steps (§9.2 Tab 3), merged from free-exercise-db at
+    /// M11 — public domain, so there's no attribution obligation and no
+    /// licence to propagate (§23.2).
+    ///
+    /// Empty for the ~70 catalogue entries free-exercise-db has no
+    /// equivalent for, and for custom exercises. The tab renders whatever
+    /// exists rather than claiming coverage it doesn't have.
+    var instructions: [String] = []
 
     /// Which run of the bundled catalogue seed (Resources/ExerciseCatalog.json)
     /// introduced this row. `nil` for user-created custom exercises. Lets
@@ -62,8 +70,10 @@ final class Exercise {
         bodyweightFactor: Double = 0,
         isCustom: Bool = false,
         defaultRestSeconds: Int? = nil,
-        catalogVersion: Int? = nil
+        catalogVersion: Int? = nil,
+        instructions: [String] = []
     ) {
+        self.instructions = instructions
         self.name = name
         self.equipmentRaw = equipment.rawValue
         self.primaryMuscleRaw = primaryMuscle.rawValue

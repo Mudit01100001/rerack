@@ -12,6 +12,8 @@ private struct ExerciseSeed: Decodable {
     let bodyweightFactor: Double
     let defaultRestSeconds: Int?
     let catalogVersion: Int
+    /// Absent for entries free-exercise-db has no match for; decoded as empty.
+    let instructions: [String]?
 }
 
 /// PRD §9.1: "bundled JSON seed file, loaded into the DB on first launch,
@@ -44,7 +46,19 @@ enum ExerciseSeeder {
 
         let lastApplied = UserDefaults.standard.integer(forKey: lastAppliedVersionKey)
         let newSeeds = seeds.filter { $0.catalogVersion > lastApplied }
-        guard !newSeeds.isEmpty else { return }
+
+        // Backfill before inserting. The version gate only decides what's
+        // *new*; it can't carry a field that was added to rows that already
+        // exist. Instructions arrived at M11 for entries seeded at v1, so an
+        // existing install would otherwise keep an empty How To tab forever.
+        //
+        // Only fills blanks — never overwrites, so a custom edit survives.
+        backfillInstructions(from: seeds, context: context)
+
+        guard !newSeeds.isEmpty else {
+            try? context.save()
+            return
+        }
 
         for seed in newSeeds {
             let exercise = Exercise(
@@ -56,7 +70,8 @@ enum ExerciseSeeder {
                 bodyweightFactor: seed.bodyweightFactor,
                 isCustom: false,
                 defaultRestSeconds: seed.defaultRestSeconds,
-                catalogVersion: seed.catalogVersion
+                catalogVersion: seed.catalogVersion,
+                instructions: seed.instructions ?? []
             )
             context.insert(exercise)
         }
@@ -68,6 +83,25 @@ enum ExerciseSeeder {
             try context.save()
         } catch {
             assertionFailure("Failed to save seeded exercise catalogue: \(error)")
+        }
+    }
+
+    /// Fills in `instructions` on catalogue rows that predate the field.
+    /// Matched by name, which is the catalogue's stable identity — ids are
+    /// generated per install, so they can't be used to line up a bundled file
+    /// with rows already in the store. Custom exercises are left alone.
+    @MainActor
+    private static func backfillInstructions(from seeds: [ExerciseSeed], context: ModelContext) {
+        let withSteps = seeds.filter { !($0.instructions ?? []).isEmpty }
+        guard !withSteps.isEmpty else { return }
+        let byName = Dictionary(withSteps.map { ($0.name, $0.instructions ?? []) }, uniquingKeysWith: { first, _ in first })
+
+        let descriptor = FetchDescriptor<Exercise>(predicate: #Predicate { !$0.isCustom })
+        guard let existing = try? context.fetch(descriptor) else { return }
+        for exercise in existing where exercise.instructions.isEmpty {
+            if let steps = byName[exercise.name] {
+                exercise.instructions = steps
+            }
         }
     }
 }

@@ -353,18 +353,74 @@ struct ExerciseDetailView: View {
         }
     }
 
-    // MARK: - How To (PRD §9.2 Tab 3 — the stub, and nothing else)
+    // MARK: - How To (PRD §9.2 Tab 3)
 
+    /// Numbered steps from free-exercise-db (public domain, §23.2), merged at
+    /// M11. Text only — §6.2's no-video position is unchanged.
+    ///
+    /// Roughly 70 catalogue entries have no match in that dataset, and custom
+    /// exercises never will. Those get an honest empty state rather than a
+    /// promise: "Coming Soon" was a lie the moment it became clear no one was
+    /// coming to write 190 sets of form cues by hand.
     private var howToTab: some View {
-        VStack(spacing: 6) {
-            Spacer()
-            Text("Coming Soon").font(.headline)
-            Text("Form cues are on the way.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            Spacer()
+        // Scrolls, like `summaryTab`. Without it a long instruction list
+        // reports its full intrinsic height, the VStack can't fit it, and the
+        // header gets pushed up underneath the navigation bar.
+        ScrollView {
+            howToContent
+                .padding(.horizontal)
+                .padding(.bottom, DS.Space.lg)
         }
-        .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private var howToContent: some View {
+        let steps = exercise.instructions.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+
+        if steps.isEmpty, let body = exercise.howToBody, !body.isEmpty {
+            Text(body)
+                .dsFont(DS.TypeScale.body, relativeTo: .body)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else if steps.isEmpty {
+            VStack(spacing: DS.Space.xs) {
+                Image(systemName: "text.book.closed")
+                    .dsFont(DS.TypeScale.title, relativeTo: .title)
+                    .foregroundStyle(.tertiary)
+                Text("No instructions for this one")
+                    .dsFont(DS.TypeScale.body, relativeTo: .headline, weight: .medium)
+                Text(exercise.isCustom
+                     ? "Add your own cues by editing this exercise."
+                     : "This movement isn't in the open exercise database yet.")
+                    .dsFont(DS.TypeScale.caption, relativeTo: .subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, DS.Space.xl)
+        } else {
+            VStack(alignment: .leading, spacing: DS.Space.sm) {
+                ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
+                    HStack(alignment: .firstTextBaseline, spacing: DS.Space.sm) {
+                        Text("\(index + 1)")
+                            .dsFont(DS.TypeScale.caption, relativeTo: .caption, weight: .bold)
+                            .foregroundStyle(Color.accentColor)
+                            .frame(width: 22, height: 22)
+                            .background(Color.accentColor.opacity(0.12), in: Circle())
+                        Text(step)
+                            .dsFont(DS.TypeScale.body, relativeTo: .body)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Step \(index + 1). \(step)")
+                }
+
+                Text("Instructions from the free-exercise-db open dataset.")
+                    .dsFont(DS.TypeScale.caption2, relativeTo: .caption2)
+                    .foregroundStyle(.tertiary)
+                    .padding(.top, DS.Space.xs)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 
     private func formatted(_ value: Double) -> String {
