@@ -40,6 +40,7 @@ struct ExerciseCardView: View {
     let onSetRestConfig: (_ seconds: Int, _ saveAsDefault: Bool) -> Void
 
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dominantHand) private var dominantHand
     @State private var showingGroupPicker = false
     @State private var showingRestPicker = false
     @State private var showingPlateCalculator = false
@@ -139,6 +140,11 @@ struct ExerciseCardView: View {
     /// figures. Naming the columns once at the top says it for every row.
     private var columnHeaders: some View {
         HStack(spacing: DS.Space.xs) {
+            // Mirrors `SetRowView` so the tick column stays over the ticks
+            // when a left-handed user flips the row (§10.1).
+            if dominantHand == .left {
+                Image(systemName: "checkmark").frame(width: 30)
+            }
             Text("SET")
                 .frame(width: 26, alignment: .leading)
             Text("PREVIOUS")
@@ -148,8 +154,9 @@ struct ExerciseCardView: View {
             Text("REPS")
                 .frame(width: 48, alignment: .center)
             Spacer(minLength: 0)
-            Image(systemName: "checkmark")
-                .frame(width: 30)
+            if dominantHand == .right {
+                Image(systemName: "checkmark").frame(width: 30)
+            }
         }
         .dsFont(DS.TypeScale.caption2, relativeTo: .caption2, weight: .semibold)
         .tracking(0.6)

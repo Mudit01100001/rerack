@@ -12,6 +12,22 @@ struct RootTabView: View {
     @AppStorage(AppearanceStorageKey.value) private var appearanceModeRaw = AppearanceMode.system.rawValue
     @Environment(\.modelContext) private var modelContext
     @State private var coordinator = ActiveWorkoutCoordinator()
+    @State private var showingOnboarding = false
+    @Query private var profiles: [UserProfile]
+
+    /// Shown when no profile has completed it. A profile row can be created
+    /// by other screens before onboarding ever runs (Settings does it
+    /// lazily), so the flag on the row is the source of truth rather than
+    /// "does a profile exist".
+    /// Read once here so the value used for the tab hierarchy and the value
+    /// re-injected into presented covers can't disagree.
+    private var dominantHand: DominantHand {
+        profiles.first?.dominantHand ?? .right
+    }
+
+    private func decideOnboarding() {
+        showingOnboarding = !(profiles.first?.hasCompletedOnboarding ?? false)
+    }
 
     private var appearanceMode: AppearanceMode {
         AppearanceMode(rawValue: appearanceModeRaw) ?? .system
@@ -32,8 +48,16 @@ struct RootTabView: View {
                 .tabItem { Label("Profile", systemImage: "person") }
         }
         .environment(coordinator)
+        .environment(\.dominantHand, dominantHand)
         .preferredColorScheme(appearanceMode.colorScheme)
         .modifier(LiveWorkoutAccessory(coordinator: coordinator))
+        // §10.1: shown once, before anything else. `fullScreenCover` rather
+        // than a sheet — it isn't dismissible by dragging, and a half-swiped
+        // first run that lands you in an empty app is a bad first impression.
+        .fullScreenCover(isPresented: $showingOnboarding) {
+            OnboardingView { showingOnboarding = false }
+        }
+        .task { decideOnboarding() }
         .fullScreenCover(
             isPresented: Binding(
                 get: { coordinator.isPresented },
@@ -52,6 +76,11 @@ struct RootTabView: View {
                     // the banner reappears, so nothing is lost.
                     onMinimize: { coordinator.isPresented = false }
                 )
+                // Re-injected rather than inherited. A presented cover does
+                // not reliably carry custom environment keys across the
+                // presentation boundary, so the tick stayed right-handed on
+                // the one screen the setting exists for.
+                .environment(\.dominantHand, dominantHand)
             }
         }
         .task {

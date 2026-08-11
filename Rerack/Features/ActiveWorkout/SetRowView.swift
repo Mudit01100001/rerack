@@ -22,6 +22,8 @@ struct SetRowView: View {
     /// a completed row (PRD §15: blocked on an incomplete parent).
     var onAddDrop: (() -> Void)? = nil
 
+    @Environment(\.dominantHand) private var dominantHand
+
     @State private var weightText = ""
     @State private var repsText = ""
     @State private var hasEdited = false
@@ -42,7 +44,37 @@ struct SetRowView: View {
     /// Column widths are shared with `ExerciseCardView.columnHeaders` — the
     /// header row and every set row read from the same numbers, so they can't
     /// drift out of alignment.
+    /// §10.1: the tick moves to the leading edge for a left-handed user, so
+    /// the thumb that reaches it isn't crossing the row over the numbers it
+    /// just entered. Everything else keeps its order.
     var body: some View {
+        HStack(spacing: DS.Space.xs) {
+            if dominantHand == .left {
+                tickButton
+            }
+            rowContent
+            if dominantHand == .right {
+                tickButton
+            }
+        }
+        .onAppear(perform: populate)
+        .onChange(of: existingSet?.id) { _, _ in populate() }
+        .onChange(of: existingSet?.isCompleted) { _, _ in populate() }
+    }
+
+    private var tickButton: some View {
+        Button(action: toggle) {
+            Image(systemName: isCompleted ? "checkmark.circle.fill" : "circle")
+                .dsFont(DS.TypeScale.heading, relativeTo: .title3)
+                .foregroundStyle(isCompleted ? Color.green : Color.secondary.opacity(0.6))
+        }
+        .buttonStyle(.plain)
+        .frame(width: 30)
+        .accessibilityLabel(isCompleted ? "Completed. Tap to undo." : "Log this set")
+    }
+
+    @ViewBuilder
+    private var rowContent: some View {
         HStack(spacing: DS.Space.xs) {
             // §7.9: drop rows are indented and marked "D" instead of a number.
             Group {
@@ -76,15 +108,6 @@ struct SetRowView: View {
             entryField(text: $repsText, placeholder: "reps", width: 48, keyboard: .numberPad)
 
             Spacer(minLength: 0)
-
-            Button(action: toggle) {
-                Image(systemName: isCompleted ? "checkmark.circle.fill" : "circle")
-                    .dsFont(DS.TypeScale.heading, relativeTo: .title3)
-                    .foregroundStyle(isCompleted ? Color.green : Color.secondary.opacity(0.6))
-            }
-            .buttonStyle(.plain)
-            .frame(width: 30)
-            .accessibilityLabel(isCompleted ? "Completed. Tap to undo." : "Log this set")
         }
         .swipeActions(edge: .trailing) {
             if existingSet != nil {
@@ -102,9 +125,6 @@ struct SetRowView: View {
                 .tint(.orange)
             }
         }
-        .onAppear(perform: populate)
-        .onChange(of: existingSet?.id) { _, _ in populate() }
-        .onChange(of: existingSet?.isCompleted) { _, _ in populate() }
     }
 
     /// Editable fields carry a filled background and a border; static text

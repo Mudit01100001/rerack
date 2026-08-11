@@ -49,6 +49,7 @@ struct ProfileView: View {
     @State private var showingRestPicker = false
     @State private var exportedFileURL: URL?
     @State private var showingExportSheet = false
+    @State private var showingOnboarding = false
 
     private var appearanceMode: Binding<AppearanceMode> {
         Binding(
@@ -75,6 +76,21 @@ struct ProfileView: View {
                         ForEach(AppearanceMode.allCases) { mode in
                             Text(mode.displayName).tag(mode)
                         }
+                    }
+                    if let profile = ensuredProfile {
+                        // §10.1/§10.2: dominant hand is reversible any time,
+                        // with the same live preview onboarding showed.
+                        Picker("Dominant hand", selection: Binding(
+                            get: { profile.dominantHand },
+                            set: { profile.dominantHand = $0; try? modelContext.save() }
+                        )) {
+                            ForEach(DominantHand.allCases) { Text($0.displayName).tag($0) }
+                        }
+                    }
+                    Button("Re-run Onboarding") {
+                        ensuredProfile?.hasCompletedOnboarding = false
+                        try? modelContext.save()
+                        showingOnboarding = true
                     }
                 }
 
@@ -126,6 +142,9 @@ struct ProfileView: View {
             if let exportedFileURL {
                 ActivityShareSheet(items: [exportedFileURL])
             }
+        }
+        .fullScreenCover(isPresented: $showingOnboarding) {
+            OnboardingView { showingOnboarding = false }
         }
     }
 
