@@ -92,4 +92,25 @@ enum WorkoutDeepLink {
     }
 
     static var finish: URL { URL(string: "\(scheme)://workout/active?finish=1")! }
+
+    /// Home-screen widget tap: start this specific workout.
+    ///
+    /// A URL rather than an `AppIntent` on purpose. Starting a session writes
+    /// rows and takes over the screen, so it should visibly open the app —
+    /// an intent that silently began a workout from the home screen would be
+    /// a background side effect with no way to see or undo it.
+    static func start(routineID: UUID) -> URL {
+        URL(string: "\(scheme)://workout/start?routine=\(routineID.uuidString)")!
+    }
+
+    /// Widget tap with nothing specific to start: just open the tab.
+    static var workoutTab: URL { URL(string: "\(scheme)://workout")! }
+
+    /// Parses a `start` link back into its routine id.
+    static func routineID(from url: URL) -> UUID? {
+        guard url.scheme == scheme, url.host == "workout", url.path == "/start" else { return nil }
+        let value = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .queryItems?.first { $0.name == "routine" }?.value
+        return value.flatMap(UUID.init(uuidString:))
+    }
 }

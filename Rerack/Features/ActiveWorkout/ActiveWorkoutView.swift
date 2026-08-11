@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import AudioToolbox
+import WidgetKit
 
 /// PRD §7 (M3), plus the new mid-workout superset behaviour: exercises can
 /// be grouped explicitly (§7.4 "Add to superset") or auto-detected from
@@ -701,6 +702,10 @@ struct ActiveWorkoutView: View {
         clearRest()
         // §7 row 28: ended immediately, no FINISHED presentation.
         LiveActivityController.shared.end()
+        // Home-screen widgets show streak, this-week count and "last
+        // performed" — all of which just changed. Without this they'd sit
+        // stale until the hourly backstop.
+        WidgetCenter.shared.reloadAllTimelines()
         workout.endedAt = Date()
         recalculateCachedStats()
         // PRD §13.4: PR detection runs once, here, so Best Session Volume

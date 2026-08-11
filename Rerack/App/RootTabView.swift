@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import WidgetKit
 
 /// PRD §6: four tabs — Home, Workout, Cardio, Profile — nothing else at root level.
 /// (Cardio added post-M1; strength and cardio are tracked as separate,
@@ -93,6 +94,14 @@ struct RootTabView: View {
         .onOpenURL { url in
             guard url.scheme == WorkoutDeepLink.scheme else { return }
             recoverLiveWorkoutIfAny()
+
+            // A widget tap naming a specific workout starts it — but never
+            // over a live one (§6). If something's already running, the tap
+            // resolves to "take me back to it" instead, which is what the
+            // widget was showing anyway.
+            if let routineID = WorkoutDeepLink.routineID(from: url), coordinator.liveWorkout == nil {
+                startRoutine(id: routineID)
+            }
             if coordinator.liveWorkout != nil {
                 coordinator.isPresented = true
             }
@@ -102,6 +111,24 @@ struct RootTabView: View {
     /// PRD §7.7: "if a Workout exists with endedAt == nil, the app restores
     /// it and returns to the active workout screen." The 12-hour
     /// abandoned-workout prompt is a fast-follow, not built here.
+    /// Starts a routine named by a widget deep link. Silently does nothing if
+    /// the routine was deleted since the widget last refreshed, or has no
+    /// exercises — the same guards `RoutineListView.start` applies, since a
+    /// widget tap shouldn't be able to create a workout the app itself
+    /// wouldn't.
+    private func startRoutine(id: UUID) {
+        let descriptor = FetchDescriptor<Routine>(predicate: #Predicate { $0.id == id })
+        guard let routine = try? modelContext.fetch(descriptor).first,
+              !(routine.exercises ?? []).isEmpty
+        else { return }
+        let workout = WorkoutStarter.start(routine: routine, context: modelContext)
+        routine.lastPerformedAt = Date()
+        try? modelContext.save()
+        coordinator.present(workout)
+        // The selector switches to "in progress" the moment one starts.
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
     private func recoverLiveWorkoutIfAny() {
         guard coordinator.liveWorkout == nil else { return }
         let descriptor = FetchDescriptor<Workout>(predicate: #Predicate { $0.endedAt == nil })

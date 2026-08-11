@@ -7,6 +7,8 @@ import UIKit
 struct RerackWidgetBundle: WidgetBundle {
     var body: some Widget {
         WorkoutLiveActivity()
+        WorkoutSelectorWidget()
+        TrainingStatsWidget()
     }
 }
 
