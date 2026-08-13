@@ -26,6 +26,10 @@ struct RootTabView: View {
         profiles.first?.dominantHand ?? .right
     }
 
+    private var unitPreference: UnitPreference {
+        profiles.first?.unitPreference ?? .kg
+    }
+
     private func decideOnboarding() {
         showingOnboarding = !(profiles.first?.hasCompletedOnboarding ?? false)
     }
@@ -50,6 +54,7 @@ struct RootTabView: View {
         }
         .environment(coordinator)
         .environment(\.dominantHand, dominantHand)
+        .environment(\.unitPreference, unitPreference)
         .preferredColorScheme(appearanceMode.colorScheme)
         .modifier(LiveWorkoutAccessory(coordinator: coordinator))
         // §10.1: shown once, before anything else. `fullScreenCover` rather
@@ -82,6 +87,7 @@ struct RootTabView: View {
                 // presentation boundary, so the tick stayed right-handed on
                 // the one screen the setting exists for.
                 .environment(\.dominantHand, dominantHand)
+                .environment(\.unitPreference, unitPreference)
             }
         }
         .task {

@@ -13,6 +13,7 @@ struct WorkoutSummaryView: View {
     let onDone: () -> Void
 
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.unitPreference) private var unit
 
     @State private var photoItem: PhotosPickerItem?
     @State private var photoData: Data?
@@ -205,7 +206,7 @@ struct WorkoutSummaryView: View {
     private var statTiles: some View {
         HStack(spacing: 12) {
             statTile(value: formattedDuration, label: "Duration")
-            statTile(value: "\(Int(workout.cachedVolumeKg)) kg", label: "Volume")
+            statTile(value: Weight.formatTotal(kg: workout.cachedVolumeKg, in: unit, includeUnit: false), label: "Volume (\(unit.abbreviation))")
             statTile(value: "\(workout.cachedSetCount)", label: "Sets")
         }
         .listRowBackground(Color.clear)
@@ -362,7 +363,7 @@ struct WorkoutSummaryView: View {
                 Text(workoutExercise.exercise?.name ?? "Exercise")
             }
             Spacer()
-            Text("\(completed.count) sets · \(Int(volume)) kg")
+            Text("\(completed.count) sets · \(Weight.formatTotal(kg: volume, in: unit))")
                 .foregroundStyle(.secondary)
             if hasPR {
                 Text("🏆")

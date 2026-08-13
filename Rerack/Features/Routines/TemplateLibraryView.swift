@@ -11,6 +11,7 @@ struct TemplateLibraryView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.unitPreference) private var unit
 
     @State private var selected: RoutineTemplate?
 
@@ -93,6 +94,7 @@ private struct TemplateDetailView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.unitPreference) private var unit
 
     @State private var importResult: TemplateImporter.Result?
 
@@ -165,12 +167,12 @@ private struct TemplateDetailView: View {
         if uniform {
             let reps = first.reps.map(String.init) ?? "-"
             guard let weight = first.weightKg else { return "\(targets.count) × \(reps)" }
-            return "\(targets.count) × \(reps) @ \(formatted(weight)) kg"
+            return "\(targets.count) × \(reps) @ \(Weight.format(kg: weight, in: unit, includeUnit: true))"
         }
         return targets.map { target in
             let reps = target.reps.map(String.init) ?? "-"
             guard let weight = target.weightKg else { return reps }
-            return "\(formatted(weight))×\(reps)"
+            return "\(Weight.format(kg: weight, in: unit))×\(reps)"
         }.joined(separator: ", ")
     }
 

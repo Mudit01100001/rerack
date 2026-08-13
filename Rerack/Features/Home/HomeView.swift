@@ -8,6 +8,7 @@ import SwiftData
 /// pill above the tab bar, not the log, so history stays a record of what
 /// actually finished.
 struct HomeView: View {
+    @Environment(\.unitPreference) private var unit
     @Query(
         filter: #Predicate<Workout> { $0.endedAt != nil },
         sort: \Workout.startedAt,
@@ -66,7 +67,7 @@ struct HomeView: View {
             spacing: DS.Space.xs
         ) {
             tile("Workouts", "\(workouts.count)")
-            tile("Total volume", "\(Int(totalVolume).formatted()) kg")
+            tile("Total volume", Weight.formatTotal(kg: totalVolume, in: unit))
             tile("Current streak", "\(streaks.current) wk")
             tile("Longest streak", "\(streaks.longest) wk")
         }
@@ -119,7 +120,7 @@ struct HomeView: View {
                     HStack(spacing: DS.Space.xxs) {
                         Text(workout.startedAt, style: .date)
                         Text("·")
-                        Text("\(Int(workout.cachedVolumeKg)) kg")
+                        Text(Weight.formatTotal(kg: workout.cachedVolumeKg, in: unit))
                         Text("·")
                         Text("\(workout.cachedSetCount) sets")
                     }

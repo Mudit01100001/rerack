@@ -92,7 +92,7 @@ struct LogSetIntent: LiveActivityIntent {
             workout.restingExerciseID = workoutExercise.id
             workout.restStartedAt = now
             workout.restEndsAt = now.addingTimeInterval(TimeInterval(duration))
-            scheduleRestNotification(for: workoutExercise, in: workout, exercises: exercises, duration: duration, ghostsProvider: ghostsProvider)
+            scheduleRestNotification(for: workoutExercise, in: workout, exercises: exercises, duration: duration, unit: profile?.unitPreference ?? .kg, ghostsProvider: ghostsProvider)
         }
 
         try? context.save()
@@ -128,11 +128,12 @@ struct LogSetIntent: LiveActivityIntent {
         in workout: Workout,
         exercises: [WorkoutExercise],
         duration: Int,
+        unit: UnitPreference,
         ghostsProvider: (WorkoutExercise) -> [GhostSet]
     ) {
         guard let fireDate = workout.restEndsAt else { return }
         let next = WorkoutEngine.nextSet(after: workoutExercise, allExercises: exercises, ghostsProvider: ghostsProvider)
-        let nextLine = next.map { "\($0.exerciseName) · \($0.positionLabel) · \(WorkoutEngine.formattedPayload(weightKg: $0.weightKg, reps: $0.reps))" }
+        let nextLine = next.map { "\($0.exerciseName) · \($0.positionLabel) · \(WorkoutEngine.formattedPayload(weightKg: $0.weightKg, reps: $0.reps, in: unit))" }
         RestNotificationScheduler.schedule(
             fireAt: fireDate,
             content: .init(durationSeconds: duration, nextLine: nextLine)
@@ -221,7 +222,8 @@ struct AdjustRestIntent: LiveActivityIntent {
         if let resting = exercises.first(where: { $0.id == workout.restingExerciseID }) {
             let ghostsProvider = WorkoutGhosts.provider(for: workout, context: context)
             let next = WorkoutEngine.nextSet(after: resting, allExercises: exercises, ghostsProvider: ghostsProvider)
-            let nextLine = next.map { "\($0.exerciseName) · \($0.positionLabel) · \(WorkoutEngine.formattedPayload(weightKg: $0.weightKg, reps: $0.reps))" }
+            let unit = (try? context.fetch(FetchDescriptor<UserProfile>()))?.first?.unitPreference ?? .kg
+            let nextLine = next.map { "\($0.exerciseName) · \($0.positionLabel) · \(WorkoutEngine.formattedPayload(weightKg: $0.weightKg, reps: $0.reps, in: unit))" }
             RestNotificationScheduler.schedule(
                 fireAt: adjusted,
                 content: .init(durationSeconds: Int(adjusted.timeIntervalSince(workout.restStartedAt ?? Date())), nextLine: nextLine)

@@ -77,18 +77,27 @@ final class LiveActivityController {
 
     // MARK: - Content composition (M6 §8)
 
+    /// Read here rather than threaded through every caller: the island is
+    /// composed in one place, so the lookup belongs in that one place.
+    private static func storedUnit() -> UnitPreference {
+        let context = ModelContainerFactory.shared.mainContext
+        return (try? context.fetch(FetchDescriptor<UserProfile>()))?.first?.unitPreference ?? .kg
+    }
+
     static func contentState(
         for workout: Workout,
         exercises: [WorkoutExercise],
         ghostsProvider: (WorkoutExercise) -> [GhostSet]
     ) -> WorkoutActivityAttributes.ContentState {
         let phase: WorkoutActivityAttributes.ContentState.Phase = workout.isResting ? .resting : .logging
+        let unit = storedUnit()
 
         guard let pointer = WorkoutEngine.nextSet(in: workout, ghostsProvider: ghostsProvider) else {
             // §7 rows 2 and 13: nothing planned remains (or nothing exists
             // yet). Rest may still be running off the final tick.
             var state = WorkoutActivityAttributes.ContentState.allLogged
             state.phase = phase
+            state.unit = unit
             state.restEndsAt = workout.restEndsAt
             state.restStartedAt = workout.restStartedAt
             state.positionLabel = exercises.isEmpty ? "No exercises yet" : "All planned sets logged"
@@ -114,6 +123,7 @@ final class LiveActivityController {
             phase: phase,
             restEndsAt: workout.restEndsAt,
             restStartedAt: workout.restStartedAt,
+            unit: unit,
             exerciseImageName: ExerciseArtwork.assetName(for: pointer.exerciseName),
             workoutExerciseID: pointer.workoutExerciseID,
             setIndex: pointer.setIndex,

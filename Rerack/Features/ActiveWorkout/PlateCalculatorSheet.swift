@@ -12,23 +12,34 @@ struct PlateCalculatorSheet: View {
     let equipment: Equipment
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.unitPreference) private var unit
     @AppStorage("com.mudit.logbook.plateCalcBarKg") private var barWeightKg = 20.0
     @State private var targetText = ""
 
-    /// Standard metric gym set, heaviest first — the order you'd actually
-    /// load them onto the sleeve.
-    private static let availablePlates: [Double] = [25, 20, 15, 10, 5, 2.5, 1.25]
+    /// Plates are *physical objects*, not a converted number. An imperial
+    /// gym racks 45/35/25/10/5/2.5 lb; telling someone in that gym to load
+    /// "11.34 kg" is useless. So each unit gets the set that actually exists
+    /// on the floor, and the maths runs in kg underneath.
+    private var availablePlates: [Double] {
+        unit == .kg
+            ? [25, 20, 15, 10, 5, 2.5, 1.25]
+            : [45, 35, 25, 10, 5, 2.5].map { $0 / Weight.poundsPerKilogram }
+    }
 
-    private static let barOptions: [(label: String, kg: Double)] = [
-        ("Olympic 20 kg", 20),
-        ("Women's 15 kg", 15),
-        ("EZ / curl 10 kg", 10),
-        ("Smith machine 0 kg", 0),
-    ]
+    private var barOptions: [(label: String, kg: Double)] {
+        unit == .kg
+            ? [("Olympic 20 kg", 20), ("Women's 15 kg", 15), ("EZ / curl 10 kg", 10), ("Smith machine 0 kg", 0)]
+            : [("Olympic 45 lb", 45 / Weight.poundsPerKilogram),
+               ("Women's 35 lb", 35 / Weight.poundsPerKilogram),
+               ("EZ / curl 25 lb", 25 / Weight.poundsPerKilogram),
+               ("Smith machine 0 lb", 0)]
+    }
 
+    /// Typed in whatever unit is showing; converted immediately so the plate
+    /// maths below only ever deals in kilograms.
     private var target: Double? {
-        guard let value = Double(targetText), value > 0 else { return nil }
-        return value
+        guard let kg = Weight.parseToKilograms(targetText, in: unit), kg > 0 else { return nil }
+        return kg
     }
 
     /// Per side. Returns the plates and whatever couldn't be made up — a
@@ -40,7 +51,7 @@ struct PlateCalculatorSheet: View {
         guard perSide >= 0 else { return nil }
 
         var result: [(Double, Int)] = []
-        for plate in Self.availablePlates {
+        for plate in availablePlates {
             let count = Int(perSide / plate)
             if count > 0 {
                 result.append((plate, count))
@@ -49,7 +60,8 @@ struct PlateCalculatorSheet: View {
         }
         // Floating-point crumbs from repeated subtraction aren't a real
         // remainder — anything under half the smallest plate is zero.
-        let remainder = perSide < 0.625 ? 0 : perSide
+        let smallest = availablePlates.last ?? 1.25
+        let remainder = perSide < smallest / 2 ? 0 : perSide
         return (result, remainder)
     }
 
@@ -64,10 +76,10 @@ struct PlateCalculatorSheet: View {
                             .keyboardType(.decimalPad)
                             .multilineTextAlignment(.trailing)
                             .frame(width: 90)
-                        Text("kg").foregroundStyle(.secondary)
+                        Text(unit.abbreviation).foregroundStyle(.secondary)
                     }
                     Picker("Bar", selection: $barWeightKg) {
-                        ForEach(Self.barOptions, id: \.kg) { option in
+                        ForEach(barOptions, id: \.kg) { option in
                             Text(option.label).tag(option.kg)
                         }
                     }
@@ -83,7 +95,7 @@ struct PlateCalculatorSheet: View {
                         } else {
                             ForEach(breakdown.plates, id: \.plate) { entry in
                                 HStack {
-                                    Text("\(formatted(entry.plate)) kg")
+                                    Text(Weight.format(kg: entry.plate, in: unit, includeUnit: true))
                                         .font(.body.monospacedDigit())
                                     Spacer()
                                     Text("× \(entry.count)")
@@ -94,7 +106,7 @@ struct PlateCalculatorSheet: View {
                                 HStack {
                                     Text("Can't make up")
                                     Spacer()
-                                    Text("\(formatted(breakdown.remainderKg)) kg")
+                                    Text(Weight.format(kg: breakdown.remainderKg, in: unit, includeUnit: true))
                                         .foregroundStyle(.orange)
                                 }
                                 .font(.subheadline)

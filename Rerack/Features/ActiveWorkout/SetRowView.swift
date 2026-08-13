@@ -23,6 +23,7 @@ struct SetRowView: View {
     var onAddDrop: (() -> Void)? = nil
 
     @Environment(\.dominantHand) private var dominantHand
+    @Environment(\.unitPreference) private var unit
 
     @State private var weightText = ""
     @State private var repsText = ""
@@ -60,6 +61,7 @@ struct SetRowView: View {
         .onAppear(perform: populate)
         .onChange(of: existingSet?.id) { _, _ in populate() }
         .onChange(of: existingSet?.isCompleted) { _, _ in populate() }
+        .onChange(of: unit) { _, _ in populate() }
     }
 
     private var tickButton: some View {
@@ -88,7 +90,7 @@ struct SetRowView: View {
     /// practically useless mid-set, so the tick carries the whole row.
     private var accessibilitySummary: String {
         let position = isDrop ? "Drop set" : "Set \(orderIndex + 1)"
-        let weight = weightText.isEmpty ? "no weight" : "\(weightText) kilograms"
+        let weight = weightText.isEmpty ? "no weight" : "\(weightText) \(unit == .kg ? "kilograms" : "pounds")"
         let reps = repsText.isEmpty ? "no reps" : "\(repsText) reps"
         let state = isCompleted ? "completed" : "not logged"
         return "\(position), \(weight), \(reps), \(state)"
@@ -116,7 +118,7 @@ struct SetRowView: View {
 
             Group {
                 if let ghost {
-                    Text("\(formatted(ghost.weightKg))×\(ghost.reps)")
+                    Text("\(Weight.format(kg: ghost.weightKg, in: unit))×\(ghost.reps)")
                 } else {
                     Text("-")
                 }
@@ -125,7 +127,7 @@ struct SetRowView: View {
             .foregroundStyle(.tertiary)
             .frame(width: 66, alignment: .leading)
 
-            entryField(text: $weightText, placeholder: "kg", width: 58, keyboard: .decimalPad)
+            entryField(text: $weightText, placeholder: unit.abbreviation, width: 58, keyboard: .decimalPad)
             entryField(text: $repsText, placeholder: "reps", width: 48, keyboard: .numberPad)
 
             Spacer(minLength: 0)
@@ -174,12 +176,12 @@ struct SetRowView: View {
             .onChange(of: text.wrappedValue) { _, _ in hasEdited = true }
             // Without this VoiceOver reads a bare number with no idea which
             // column it came from.
-            .accessibilityLabel(placeholder == "kg" ? "Weight in kilograms" : "Repetitions")
+            .accessibilityLabel(placeholder == "reps" ? "Repetitions" : "Weight in \(unit == .kg ? "kilograms" : "pounds")")
     }
 
     private func populate() {
         if let existingSet {
-            weightText = formatted(existingSet.addedWeightKg)
+            weightText = Weight.format(kg: existingSet.addedWeightKg, in: unit)
             // §7.9: reps genuinely vary set-to-set on a drop, so an un-ticked
             // drop added by hand carries `reps == 0` as "not guessed yet"
             // rather than a fact-shaped lie (Principle 5). A reproduced chain
@@ -187,14 +189,14 @@ struct SetRowView: View {
             repsText = (!existingSet.isCompleted && existingSet.reps == 0) ? "" : String(existingSet.reps)
             hasEdited = existingSet.isCompleted
         } else if let ghost {
-            weightText = formatted(ghost.weightKg)
+            weightText = Weight.format(kg: ghost.weightKg, in: unit)
             repsText = String(ghost.reps)
             hasEdited = false
         } else if let dropPrefillWeightKg {
             // §7.9: only the weight is pre-filled — reps genuinely vary
             // set-to-set on a drop, so guessing one would be a fact-shaped
             // lie (PRD §4 Principle 5).
-            weightText = formatted(dropPrefillWeightKg)
+            weightText = Weight.format(kg: dropPrefillWeightKg, in: unit)
             repsText = ""
             hasEdited = false
         } else {
@@ -211,8 +213,8 @@ struct SetRowView: View {
             // PRD §7.2: empty reps blocks completion; 0 kg is allowed
             // (bodyweight exercises, §13.1).
             guard let reps = Int(repsText), reps > 0 else { return }
-            let weight = Double(weightText) ?? 0
-            onComplete(weight, reps)
+            let weightKg = Weight.parseToKilograms(weightText, in: unit) ?? 0
+            onComplete(weightKg, reps)
         }
     }
 

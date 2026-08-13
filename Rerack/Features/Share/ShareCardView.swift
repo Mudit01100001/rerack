@@ -125,7 +125,7 @@ struct ShareCardView: View {
             }
             .frame(height: size == .story ? 130 : 100)
 
-            Text("\(content.volumeKgFormatted) kg lifted")
+            Text("\(content.volumeFormatted) lifted")
                 .font(.system(size: size == .story ? 30 : 25, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
 
@@ -204,7 +204,7 @@ struct ShareCardView: View {
     private var statsBody: some View {
         VStack(alignment: .leading, spacing: size == .story ? 14 : 10) {
             statLine(content.durationFormatted, "Duration")
-            statLine("\(content.volumeKgFormatted) kg", "Volume")
+            statLine(content.volumeFormatted, "Volume")
             statLine("\(content.setCount)", "Sets")
             if content.prCount > 0 {
                 statLine("\(content.prCount)", content.prCount == 1 ? "Record" : "Records")
@@ -257,7 +257,11 @@ struct ShareCardContent {
     let workoutTitle: String
     let dateLine: String
     let durationFormatted: String
-    let volumeKgFormatted: String
+    /// Pre-formatted *with* its unit. `ImageRenderer` draws this view outside
+    /// the view hierarchy, so `@Environment` never reaches it — anything the
+    /// card needs has to arrive as plain data or it silently renders the
+    /// default.
+    let volumeFormatted: String
     let setCount: Int
     let prCount: Int
     let exerciseLines: [String]

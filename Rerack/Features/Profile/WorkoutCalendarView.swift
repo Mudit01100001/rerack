@@ -4,6 +4,7 @@ import SwiftData
 /// PRD §9.6 Calendar tile: month grid, days with workouts marked, tap a day
 /// to see them.
 struct WorkoutCalendarView: View {
+    @Environment(\.unitPreference) private var unit
     @Query(
         filter: #Predicate<Workout> { $0.endedAt != nil },
         sort: \Workout.startedAt,
@@ -71,7 +72,7 @@ struct WorkoutCalendarView: View {
                 List(items) { workout in
                     VStack(alignment: .leading, spacing: 2) {
                         Text(workout.title).font(.subheadline.weight(.medium))
-                        Text("\(Int(ProfileStats.volume(of: workout))) kg · \(ProfileStats.completedSets(in: workout).count) sets")
+                        Text("\(Weight.formatTotal(kg: ProfileStats.volume(of: workout), in: unit)) · \(ProfileStats.completedSets(in: workout).count) sets")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

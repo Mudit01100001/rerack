@@ -15,6 +15,7 @@ struct WorkoutCompleteView: View {
     let onDone: () -> Void
 
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.unitPreference) private var unit
 
     @State private var variant: ShareCardView.Variant = .animal
     @State private var size: ShareCardView.Size = .story
@@ -24,7 +25,7 @@ struct WorkoutCompleteView: View {
     @State private var showingConfetti = false
 
     private var content: ShareCardContent {
-        ShareCardContentBuilder.build(for: workout, context: modelContext)
+        ShareCardContentBuilder.build(for: workout, context: modelContext, unit: unit)
     }
 
     var body: some View {
@@ -121,7 +122,7 @@ struct WorkoutCompleteView: View {
             HStack(spacing: 0) {
                 stat(content.durationFormatted, "Duration")
                 divider
-                stat("\(content.volumeKgFormatted) kg", "Volume")
+                stat(content.volumeFormatted, "Volume")
                 divider
                 stat("\(content.setCount)", "Sets")
                 if content.prCount > 0 {
@@ -221,7 +222,7 @@ struct WorkoutCompleteView: View {
     }
 
     private func copyText() {
-        UIPasteboard.general.string = ShareCardContentBuilder.plainText(for: workout, context: modelContext)
+        UIPasteboard.general.string = ShareCardContentBuilder.plainText(for: workout, context: modelContext, unit: unit)
         saveMessage = "Workout copied as text."
     }
 }
@@ -229,7 +230,7 @@ struct WorkoutCompleteView: View {
 /// Resolves a workout into everything the cards render, once.
 @MainActor
 enum ShareCardContentBuilder {
-    static func build(for workout: Workout, context: ModelContext) -> ShareCardContent {
+    static func build(for workout: Workout, context: ModelContext, unit: UnitPreference) -> ShareCardContent {
         let exercises = (workout.exercises ?? []).sorted { $0.orderIndex < $1.orderIndex }
         let completed = exercises.flatMap { $0.sets ?? [] }.filter(\.isCompleted)
         let volume = completed.reduce(0) { $0 + $1.setVolumeKg }
@@ -247,7 +248,7 @@ enum ShareCardContentBuilder {
             let sets = (workoutExercise.sets ?? []).filter(\.isCompleted)
             guard !sets.isEmpty, let name = workoutExercise.exercise?.name else { return nil }
             let setVolume = sets.reduce(0) { $0 + $1.setVolumeKg }
-            return "\(name), \(sets.count) × \(Int(setVolume)) kg"
+            return "\(name), \(sets.count) × \(Weight.formatTotal(kg: setVolume, in: unit))"
         }
 
         let match = AnimalLadder.match(volumeKg: volume)
@@ -263,7 +264,7 @@ enum ShareCardContentBuilder {
             workoutTitle: workout.routineNameSnapshot ?? workout.title,
             dateLine: workout.startedAt.formatted(date: .abbreviated, time: .shortened),
             durationFormatted: formattedDuration(ProfileStats.duration(of: workout)),
-            volumeKgFormatted: Int(volume).formatted(),
+            volumeFormatted: Weight.formatTotal(kg: volume, in: unit),
             setCount: completed.count,
             prCount: prCount,
             exerciseLines: lines,
@@ -278,12 +279,12 @@ enum ShareCardContentBuilder {
     }
 
     /// §9.5 "Copy as text" — the whole session, plain, for pasting anywhere.
-    static func plainText(for workout: Workout, context: ModelContext) -> String {
-        let content = build(for: workout, context: context)
+    static func plainText(for workout: Workout, context: ModelContext, unit: UnitPreference) -> String {
+        let content = build(for: workout, context: context, unit: unit)
         var lines = [
             content.workoutTitle,
             content.dateLine,
-            "\(content.durationFormatted) · \(content.volumeKgFormatted) kg · \(content.setCount) sets",
+            "\(content.durationFormatted) · \(content.volumeFormatted) · \(content.setCount) sets",
             "",
         ]
         lines.append(contentsOf: content.exerciseLines)

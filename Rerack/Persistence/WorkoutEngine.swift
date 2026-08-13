@@ -250,7 +250,8 @@ enum WorkoutEngine {
     static func thenLine(
         after pointer: NextSetPointer,
         allExercises: [WorkoutExercise],
-        ghostsProvider: (WorkoutExercise) -> [GhostSet]
+        ghostsProvider: (WorkoutExercise) -> [GhostSet],
+        in unit: UnitPreference = .kg
     ) -> String? {
         // Mid drop chain: the next step never changes exercise (§7.9 — a
         // chain is uninterruptible), so the line is absent by the rule.
@@ -267,7 +268,7 @@ enum WorkoutEngine {
                 guard let target = Self.pointer(for: candidate, allExercises: allExercises, ghostsProvider: ghostsProvider) else { continue }
                 let label = target.supersetLabel.map { "\($0) " } ?? ""
                 if target.isPayloadKnown {
-                    return "Then  \(label)\(target.exerciseName) · \(formattedPayload(weightKg: target.weightKg, reps: target.reps))"
+                    return "Then  \(label)\(target.exerciseName) · \(formattedPayload(weightKg: target.weightKg, reps: target.reps, in: unit))"
                 }
                 return "Then  \(label)\(target.exerciseName)"
             }
@@ -298,9 +299,8 @@ enum WorkoutEngine {
 
     /// `12 kg × 6`, trailing `.0` dropped — one implementation of the payload
     /// wording for the notification line, the Then line, and the island.
-    static func formattedPayload(weightKg: Double, reps: Int) -> String {
-        let weight = weightKg.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(weightKg)) : String(weightKg)
-        return "\(weight) kg × \(reps)"
+    static func formattedPayload(weightKg: Double, reps: Int, in unit: UnitPreference = .kg) -> String {
+        "\(Weight.format(kg: weightKg, in: unit, includeUnit: true)) × \(reps)"
     }
 
     private static func nextInSequence(

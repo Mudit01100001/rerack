@@ -7,6 +7,7 @@ import Charts
 struct ProfileView: View {
     @AppStorage(AppearanceStorageKey.value) private var appearanceModeRaw = AppearanceMode.system.rawValue
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.unitPreference) private var unit
     @Query private var profiles: [UserProfile]
 
     @Query(
@@ -78,6 +79,15 @@ struct ProfileView: View {
                         }
                     }
                     if let profile = ensuredProfile {
+                        // §10.2 "Units". Reversible at any time: nothing is
+                        // stored in the display unit, so switching re-renders
+                        // history rather than rewriting it.
+                        Picker("Units", selection: Binding(
+                            get: { profile.unitPreference },
+                            set: { profile.unitPreference = $0; try? modelContext.save() }
+                        )) {
+                            ForEach(UnitPreference.allCases) { Text($0.displayName).tag($0) }
+                        }
                         // §10.1/§10.2: dominant hand is reversible any time,
                         // with the same live preview onboarding showed.
                         Picker("Dominant hand", selection: Binding(
@@ -165,7 +175,7 @@ struct ProfileView: View {
                 .font(.title2.bold())
             HStack(spacing: 14) {
                 totalItem("\(workouts.count)", "workouts")
-                totalItem("\(Int(workouts.reduce(0) { $0 + ProfileStats.volume(of: $1) }))", "kg")
+                totalItem(Weight.formatTotal(kg: workouts.reduce(0) { $0 + ProfileStats.volume(of: $1) }, in: unit, includeUnit: false), unit.abbreviation)
                 totalItem(String(format: "%.1f", workouts.reduce(0) { $0 + ProfileStats.duration(of: $1) } / 3600), "hours")
             }
         }

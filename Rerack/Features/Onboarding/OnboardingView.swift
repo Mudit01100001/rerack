@@ -5,10 +5,9 @@ import SwiftData
 /// set here is changeable later, and the copy says so — a first-run flow that
 /// feels like a commitment is a first-run flow people rush.
 ///
-/// Deliberately *not* asking for units (kg/lb) despite §10.1 listing it. The
-/// app displays kilograms in ~29 places and converts in none of them, so the
-/// picker would be a control that does nothing. It comes back the moment
-/// unit conversion is real.
+/// Units are asked for here now that conversion is real. They were left out
+/// while every screen hardcoded kilograms, because a picker that changes
+/// nothing is worse than no picker.
 struct OnboardingView: View {
     let onFinish: () -> Void
 
@@ -17,6 +16,7 @@ struct OnboardingView: View {
 
     @State private var page = 0
     @State private var displayName = ""
+    @State private var unitPreference: UnitPreference = .kg
     @State private var dominantHand: DominantHand = .right
     @State private var healthDecision: HealthDecision = .undecided
 
@@ -57,7 +57,7 @@ struct OnboardingView: View {
         page(
             icon: "person.fill",
             title: "The basics",
-            body: "Both of these are changeable later in Settings."
+            body: "All of these are changeable later in Settings."
         ) {
             VStack(alignment: .leading, spacing: DS.Space.lg) {
                 VStack(alignment: .leading, spacing: DS.Space.xs) {
@@ -65,6 +65,15 @@ struct OnboardingView: View {
                         .dsFont(DS.TypeScale.caption, relativeTo: .subheadline, weight: .medium)
                     TextField("Optional", text: $displayName)
                         .textFieldStyle(.roundedBorder)
+                }
+
+                VStack(alignment: .leading, spacing: DS.Space.xs) {
+                    Text("Which units?")
+                        .dsFont(DS.TypeScale.caption, relativeTo: .subheadline, weight: .medium)
+                    Picker("Units", selection: $unitPreference) {
+                        ForEach(UnitPreference.allCases) { Text($0.displayName).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
                 }
 
                 VStack(alignment: .leading, spacing: DS.Space.xs) {
@@ -80,7 +89,7 @@ struct OnboardingView: View {
                     // §10.1's live preview: the tick visibly changes sides as
                     // you pick, so the setting explains itself instead of
                     // needing a sentence about thumb reach.
-                    SetRowPreview()
+                    SetRowPreview(unit: unitPreference)
                         .environment(\.dominantHand, dominantHand)
                         .padding(.top, DS.Space.xs)
                     Text("The tick sits under your thumb.")
@@ -230,6 +239,7 @@ struct OnboardingView: View {
         let trimmed = displayName.trimmingCharacters(in: .whitespaces)
         if !trimmed.isEmpty { target.displayName = trimmed }
         target.dominantHand = dominantHand
+        target.unitPreference = unitPreference
         target.hasCompletedOnboarding = true
         try? modelContext.save()
         onFinish()
@@ -241,6 +251,7 @@ struct OnboardingView: View {
 /// the real row needs a `SetLog` and a model context, neither of which
 /// exists yet during onboarding.
 private struct SetRowPreview: View {
+    var unit: UnitPreference = .kg
     @Environment(\.dominantHand) private var dominantHand
 
     var body: some View {
@@ -250,11 +261,11 @@ private struct SetRowPreview: View {
                 .dsFont(DS.TypeScale.caption, relativeTo: .subheadline, weight: .medium)
                 .frame(width: 26, alignment: .leading)
                 .foregroundStyle(.secondary)
-            Text("20×5")
+            Text("\(Weight.format(kg: 20, in: unit))×5")
                 .dsFont(DS.TypeScale.caption, relativeTo: .caption, design: .rounded)
                 .foregroundStyle(.tertiary)
                 .frame(width: 66, alignment: .leading)
-            field("20", width: 58)
+            field(Weight.format(kg: 20, in: unit), width: 58)
             field("5", width: 48)
             Spacer(minLength: 0)
             if dominantHand == .right { tick }

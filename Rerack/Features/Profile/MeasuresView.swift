@@ -8,6 +8,7 @@ import Charts
 /// `BodyMetric` rows, just typed in rather than synced.
 struct MeasuresView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.unitPreference) private var unit
     @Query(sort: \BodyMetric.date, order: .forward) private var metrics: [BodyMetric]
 
     @State private var metricType: MetricType = .bodyweight
@@ -19,16 +20,31 @@ struct MeasuresView: View {
         metrics.filter { $0.type == metricType }
     }
 
-    private var unit: String { metricType == .bodyweight ? "kg" : "%" }
+    /// Body fat is a percentage in every locale, so only bodyweight follows
+    /// the unit setting.
+    private var unitLabel: String { metricType == .bodyweight ? unit.abbreviation : "%" }
 
     private var latest: BodyMetric? { shown.last }
+
+    /// `BodyMetric.value` holds kilograms for bodyweight and a raw percentage
+    /// for body fat. Only the first is a weight, so only the first converts —
+    /// running a percentage through a kg-to-lb factor would be nonsense.
+    private func displayValue(_ metric: BodyMetric) -> Double {
+        metric.type == .bodyweight ? Weight.toDisplay(kg: metric.value, in: unit) : metric.value
+    }
+
+    private func displayText(_ metric: BodyMetric) -> String {
+        metric.type == .bodyweight
+            ? Weight.format(kg: metric.value, in: unit)
+            : formatted(metric.value)
+    }
 
     /// Swift Charts can't infer a sane scale from one point (or from several
     /// nearly-identical ones) — the domain collapses and the axis renders
     /// upside down. Padding by at least ±1 unit keeps the very first reading
     /// someone logs looking like a chart rather than a rendering bug.
     private var chartDomain: ClosedRange<Double> {
-        let values = shown.map(\.value)
+        let values = shown.map(displayValue)
         guard let min = values.min(), let max = values.max() else { return 0...1 }
         let padding = Swift.max((max - min) * 0.15, 1)
         return (min - padding)...(max + padding)
@@ -54,7 +70,7 @@ struct MeasuresView: View {
                         HStack {
                             Text("Latest")
                             Spacer()
-                            Text("\(formatted(latest.value)) \(unit)")
+                            Text("\(displayText(latest)) \(unitLabel)")
                                 .foregroundStyle(.secondary)
                             Text(latest.date, format: .dateTime.day().month().year())
                                 .font(.caption)
@@ -98,7 +114,7 @@ struct MeasuresView: View {
                     // today's reading at the bottom of a long scroll.
                     ForEach(shown.reversed()) { metric in
                         HStack {
-                            Text("\(formatted(metric.value)) \(unit)")
+                            Text("\(displayText(metric)) \(unitLabel)")
                             Spacer()
                             Text(metric.date, format: .dateTime.day().month().year())
                                 .foregroundStyle(.secondary)
@@ -156,12 +172,12 @@ struct MeasuresView: View {
         Chart(shown) { metric in
             LineMark(
                 x: .value("Date", metric.date),
-                y: .value(metricType == .bodyweight ? "kg" : "%", metric.value)
+                y: .value(unitLabel, displayValue(metric))
             )
             .interpolationMethod(.monotone)
             PointMark(
                 x: .value("Date", metric.date),
-                y: .value(metricType == .bodyweight ? "kg" : "%", metric.value)
+                y: .value(unitLabel, displayValue(metric))
             )
         }
         // Never zero-based: a bodyweight range of 72–76 kg against a 0 axis is
@@ -224,17 +240,23 @@ struct MeasuresView: View {
 /// point in the wrong place on the chart forever.
 private struct AddMeasurementSheet: View {
     let type: MetricType
+    /// Receives storage units: kilograms for bodyweight, percent for body fat.
     let onSave: (Double, Date) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.unitPreference) private var unit
     @State private var valueText = ""
     @State private var date = Date()
 
+    /// Converted to storage units here, at the boundary, so nothing
+    /// downstream has to remember which space the number is in.
     private var parsedValue: Double? {
-        guard let value = Double(valueText), value > 0 else { return nil }
-        // A body-fat percentage above 100 is a typo, not a reading.
-        if type == .bodyFatPercentage && value > 100 { return nil }
-        return value
+        guard let typed = Double(valueText.replacingOccurrences(of: ",", with: ".")), typed > 0 else { return nil }
+        guard type == .bodyweight else {
+            // A body-fat percentage above 100 is a typo, not a reading.
+            return typed > 100 ? nil : typed
+        }
+        return Weight.toKilograms(display: typed, in: unit)
     }
 
     var body: some View {
@@ -243,7 +265,7 @@ private struct AddMeasurementSheet: View {
                 HStack {
                     TextField(type == .bodyweight ? "Weight" : "Body fat", text: $valueText)
                         .keyboardType(.decimalPad)
-                    Text(type == .bodyweight ? "kg" : "%")
+                    Text(type == .bodyweight ? unit.abbreviation : "%")
                         .foregroundStyle(.secondary)
                 }
                 DatePicker("Date", selection: $date, in: ...Date(), displayedComponents: .date)

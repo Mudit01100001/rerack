@@ -43,6 +43,12 @@ struct WorkoutActivityAttributes: ActivityAttributes {
         /// both, unlike the countdown which only needs the end.
         var restStartedAt: Date?
 
+        /// The unit the payload should be *rendered* in. `weightKg` below
+        /// stays metric, as everywhere; this only decides how it's drawn.
+        /// Carried in the state because the widget is a separate process
+        /// with no view environment and no store access.
+        var unit: UnitPreference = .kg
+
         /// Asset-catalogue name for this exercise's thumbnail, or nil while
         /// no artwork exists for it. Carried end-to-end now so dropping real
         /// images in later is an asset-catalogue change and nothing more.

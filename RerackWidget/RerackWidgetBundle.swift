@@ -68,7 +68,7 @@ struct WorkoutLiveActivity: Widget {
                         .font(.caption2.monospacedDigit())
                         .frame(maxWidth: 40)
                 } else {
-                    Text(compactPayload(context.state.payload))
+                    Text(compactPayload(context.state.payload, unit: context.state.unit))
                         .font(.caption2.monospacedDigit())
                 }
             } minimal: {
@@ -88,10 +88,10 @@ struct WorkoutLiveActivity: Widget {
     }
 
     /// `12×6`, ≤6 glyphs or weight alone; `—` when unknown (M6 §4.3).
-    private func compactPayload(_ payload: WorkoutActivityAttributes.ContentState.Payload) -> String {
+    private func compactPayload(_ payload: WorkoutActivityAttributes.ContentState.Payload, unit: UnitPreference) -> String {
         switch payload {
         case .known(let weightKg, let reps):
-            let weight = weightKg.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(weightKg)) : String(weightKg)
+            let weight = Weight.format(kg: weightKg, in: unit)
             let composed = "\(weight)×\(reps)"
             return composed.count > 6 ? weight : composed
         case .repsOnly(let reps):
@@ -175,8 +175,7 @@ private struct LockScreenView: View {
         guard context.state.restEndsAt != nil else { return context.state.positionLabel }
         switch context.state.payload {
         case .known(let weightKg, let reps):
-            let weight = weightKg.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(weightKg)) : String(weightKg)
-            return "Next: \(context.state.positionLabel.lowercased()) · \(weight) kg × \(reps)"
+            return "Next: \(context.state.positionLabel.lowercased()) · \(Weight.format(kg: weightKg, in: context.state.unit, includeUnit: true)) × \(reps)"
         case .repsOnly(let reps):
             return "Next: \(context.state.positionLabel.lowercased()) · \(reps) reps"
         case .unknown:
@@ -325,7 +324,7 @@ private struct PayloadRow: View {
     private var payloadText: some View {
         switch context.state.payload {
         case .known(let weightKg, let reps):
-            Text("\(formattedWeight(weightKg)) kg × \(reps)")
+            Text("\(Weight.format(kg: weightKg, in: context.state.unit, includeUnit: true)) × \(reps)")
                 .font(.title3.monospacedDigit())
         case .repsOnly(let reps):
             Text("\(reps) reps")

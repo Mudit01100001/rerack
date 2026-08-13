@@ -18,6 +18,7 @@ struct ActiveWorkoutView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.unitPreference) private var unit
 
     /// Set the moment the app leaves the foreground while a rest period is
     /// running (§ scenePhase handling below), reset whenever rest starts or
@@ -358,7 +359,7 @@ struct ActiveWorkoutView: View {
                     .font(.title2.monospacedDigit())
             }
             HStack(spacing: 12) {
-                Label("\(Int(totalVolume)) kg", systemImage: "scalemass")
+                Label(Weight.formatTotal(kg: totalVolume, in: unit), systemImage: "scalemass")
                 Label("\(totalSets) sets", systemImage: "checkmark.circle")
             }
             .font(.caption)
@@ -528,7 +529,7 @@ struct ActiveWorkoutView: View {
         guard let fireDate = workout.restEndsAt else { return }
         let duration = Int(fireDate.timeIntervalSince(workout.restStartedAt ?? Date()))
         let next = WorkoutEngine.nextSet(after: workoutExercise, allExercises: sortedExercises, ghostsProvider: ghosts(for:))
-        let nextLine = next.map { "\($0.exerciseName) · \($0.positionLabel) · \(formattedWeight($0.weightKg)) kg × \($0.reps)" }
+        let nextLine = next.map { "\($0.exerciseName) · \($0.positionLabel) · \(Weight.format(kg: $0.weightKg, in: unit, includeUnit: true)) × \($0.reps)" }
         let content = RestNotificationScheduler.Content(durationSeconds: duration, nextLine: nextLine)
         pendingRestContent = content
         RestNotificationScheduler.schedule(fireAt: fireDate, content: content)

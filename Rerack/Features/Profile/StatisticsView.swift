@@ -4,6 +4,7 @@ import Charts
 
 /// PRD §9.6 Statistics tile.
 struct StatisticsView: View {
+    @Environment(\.unitPreference) private var unit
     @Query(
         filter: #Predicate<Workout> { $0.endedAt != nil },
         sort: \Workout.startedAt,
@@ -32,7 +33,7 @@ struct StatisticsView: View {
             } else {
                 Section("Lifetime") {
                     row("Workouts", "\(workouts.count)")
-                    row("Volume", "\(Int(totalVolume)) kg")
+                    row("Volume", Weight.formatTotal(kg: totalVolume, in: unit))
                     row("Hours", String(format: "%.1f", totalHours))
                     row("Average duration", formattedDuration(averageDuration))
                 }

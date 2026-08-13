@@ -41,6 +41,7 @@ struct ExerciseCardView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dominantHand) private var dominantHand
+    @Environment(\.unitPreference) private var unit
     @State private var showingGroupPicker = false
     @State private var showingRestPicker = false
     @State private var showingPlateCalculator = false
@@ -149,7 +150,7 @@ struct ExerciseCardView: View {
                 .frame(width: 26, alignment: .leading)
             Text("PREVIOUS")
                 .frame(width: 66, alignment: .leading)
-            Text("KG")
+            Text(unit.abbreviation.uppercased())
                 .frame(width: 58, alignment: .center)
             Text("REPS")
                 .frame(width: 48, alignment: .center)

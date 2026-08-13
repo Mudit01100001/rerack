@@ -3,6 +3,7 @@ import SwiftUI
 /// PRD §9.3: one target set within a routine exercise — the values that seed
 /// ghost sets the first time the routine is ever run (§7.3).
 struct RoutineSetTemplateRow: View {
+    @Environment(\.unitPreference) private var unit
     @Bindable var template: RoutineSetTemplate
     let onDelete: () -> Void
 
@@ -21,11 +22,14 @@ struct RoutineSetTemplateRow: View {
                     .frame(width: 52, alignment: .leading)
             }
 
-            TextField("kg", text: $weightText)
+            TextField(unit.abbreviation, text: $weightText)
                 .keyboardType(.decimalPad)
                 .textFieldStyle(.roundedBorder)
                 .onChange(of: weightText) { _, newValue in
-                    template.targetWeightKg = Double(newValue)
+                    // Stored in kg regardless of what's on screen, so a
+                    // template built in pounds still seeds ghost sets
+                    // correctly for someone reading kilograms.
+                    template.targetWeightKg = Weight.parseToKilograms(newValue, in: unit)
                 }
 
             Text("×")
@@ -45,7 +49,7 @@ struct RoutineSetTemplateRow: View {
             .buttonStyle(.plain)
         }
         .onAppear {
-            weightText = template.targetWeightKg.map { formatted($0) } ?? ""
+            weightText = template.targetWeightKg.map { Weight.format(kg: $0, in: unit) } ?? ""
             repsText = template.targetReps.map(String.init) ?? ""
         }
     }

@@ -11,6 +11,7 @@ struct ExerciseDetailView: View {
     let exercise: Exercise
 
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.unitPreference) private var unit
     @Environment(\.dismiss) private var dismiss
 
     @State private var tab: Tab = .summary
@@ -197,7 +198,7 @@ struct ExerciseDetailView: View {
                             PointMark(x: .value("Date", point.0), y: .value(metric.rawValue, point.1))
                         }
                     }
-                    .chartYAxisLabel(metric.isWeight ? "kg" : "reps")
+                    .chartYAxisLabel(metric.isWeight ? unit.abbreviation : "reps")
                     .frame(height: 180)
                 }
 
@@ -219,10 +220,10 @@ struct ExerciseDetailView: View {
                 ExplainerButton(term: .personalRecordTypes)
             }
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                recordCard("Heaviest Weight", .heaviestWeight, unit: "kg")
-                recordCard("Best 1RM", .best1RM, unit: "kg")
-                recordCard("Best Set Volume", .bestSetVolume, unit: "kg")
-                recordCard("Best Session Volume", .bestSessionVolume, unit: "kg")
+                recordCard("Heaviest Weight", .heaviestWeight, unit: unit.abbreviation)
+                recordCard("Best 1RM", .best1RM, unit: unit.abbreviation)
+                recordCard("Best Set Volume", .bestSetVolume, unit: unit.abbreviation)
+                recordCard("Best Session Volume", .bestSessionVolume, unit: unit.abbreviation)
             }
         }
     }
@@ -260,7 +261,7 @@ struct ExerciseDetailView: View {
                 statRow("Sessions", "\(stats.sessionCount)")
                 statRow("Sets", "\(stats.setCount)")
                 statRow("Reps", "\(stats.repCount)")
-                statRow("Volume", "\(formatted(stats.volumeKg)) kg")
+                statRow("Volume", Weight.formatTotal(kg: stats.volumeKg, in: unit))
                 if let first = stats.firstPerformed {
                     statRow("First performed", first.formatted(date: .abbreviated, time: .omitted))
                 }
@@ -302,7 +303,7 @@ struct ExerciseDetailView: View {
                             HStack {
                                 Text("\(session.sets.count) sets · \(session.totalReps) reps")
                                 Spacer()
-                                Text("\(formatted(session.sessionVolumeKg)) kg")
+                                Text(Weight.formatTotal(kg: session.sessionVolumeKg, in: unit))
                             }
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -344,7 +345,7 @@ struct ExerciseDetailView: View {
             if set.setType == .warmup {
                 Text("W").font(.caption2.bold()).foregroundStyle(.secondary)
             }
-            Text("\(formatted(set.effectiveLoadKg)) kg × \(set.reps)")
+            Text("\(Weight.format(kg: set.effectiveLoadKg, in: unit, includeUnit: true)) × \(set.reps)")
                 .font(.subheadline)
             Spacer()
             if !set.prFlags.isEmpty {
