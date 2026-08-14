@@ -1235,13 +1235,13 @@ You mentioned getting to TestFlight within a day. Worth separating two things:
 | **M2 — Routines** ✅ *built* | Create/edit/delete/duplicate, folders, set templates, **superset grouping in the editor**. Reorder is up/down buttons rather than drag-to-reorder — a deliberate simplification, noted in code, upgradeable later. "Start Routine" stays disabled — that's M3. | 4–5 days | ✅ |
 | **M3 — The Core** ✅ *built* | Active workout, set rows, tick, ghost sets, swipe-to-delete, add/remove exercises, live stats, crash recovery, cross-tab banner, basic rest timer, **mid-workout supersets incl. auto-detection (§7.8.1)** | 1.5 weeks | ✅ **ship it** |
 | **M4 — Supersets & drop sets** ✅ *built* | Round-robin pointer, grouped rendering, drop chains, rest suppression rules. Supersets landed early in M3; M4 added drop chains (`+ Drop` swipe, −20%/2.5 kg pre-fill) and the two-gate rest rule. **Known gap:** ghost sets don't yet reproduce a drop chain next session (§7.9 closing bullet) — deferred to M8, needs a ghost-format change. | 1 week | ✅ |
-| **M5 — Rest timer** | Wall-clock timer, per-exercise config, local notifications | 3–4 days | ✅ |
-| **M6 — Live Activity** | Widget extension, all four layouts, `LiveActivityIntent` tick, state machine, background relaunch | 1.5 weeks | ✅ |
+| **M5 — Rest timer** ✅ *built* | Wall-clock timer, per-exercise config, local notifications | 3–4 days | ✅ |
+| **M6 — Live Activity** ✅ *built* | Widget extension, all four layouts, `LiveActivityIntent` tick, state machine, background relaunch. Shipped with ±15s and skip on the Lock Screen, reversing the design doc's §10 call to keep one target per phase. | 1.5 weeks | ✅ |
 | **M7 — Finish flow** | Summary screen, photo, tags, PR detection, routine value updating | 1 week | ✅ |
 | **M8 — Analytics & explainers** ✅ *built* | Exercise detail (Summary/History/How To), Swift Charts progress graph across all five metrics, PR cards, profile stats + calendar + exercise usage, activity graph, **`?` system with all 13 registry entries written**. Measures tile still stubbed — needs HealthKit (M9). | 1.5 weeks | ✅ **TestFlight-ready** |
-| **M9 — Data** | CSV export, Health read + bodyweight maths, Health write, measures | 4–5 days | ✅ |
-| **M10 — Share** | Card rendering, animal ladder + 18 assets, muscle map, export actions | 1 week | ✅ |
-| **M11 — V1 polish** | Onboarding, icon, empty states, accessibility pass | 4–5 days | ✅ **V1** |
+| **M9 — Data** ✅ *built* | CSV export, Health read + bodyweight maths, Health write, measures. Calories are deliberately **not** written — without heart-rate data the figure would be invented, and Health republishes it to other apps as fact. | 4–5 days | ✅ |
+| **M10 — Share** ✅ *built* | Card rendering, animal ladder, muscle map, export actions, Instagram Stories hand-off, confetti. Artwork is plumbed but not drawn — see [`docs/ARTWORK.md`](docs/ARTWORK.md). | 1 week | ✅ |
+| **M11 — V1 polish** ✅ *built* | Onboarding, icon, empty states, accessibility pass, dominant hand, kg/lb units. Beyond scope: home-screen widgets, cardio-console OCR, split templates, plate calculator. | 4–5 days | ✅ **V1** |
 
 **M3 is make-or-break.** Build it first after the schema, use it in a real session before writing anything else, and let that session dictate what M4 onward actually needs.
 

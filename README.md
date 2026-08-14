@@ -8,19 +8,25 @@ Full product spec: [`PRD.md`](PRD.md) · Session history and current blockers: [
 
 ## Status
 
-In development, running on a physical device via TestFlight internal testing.
+**V1 feature-complete.** Every milestone M1–M11 is built and verified on a physical device via TestFlight internal testing.
 
 | Milestone | State |
 |---|---|
 | M1 — Skeleton, exercise library, cardio | ✅ |
-| M2 — Routine builder | ✅ |
+| M2 — Split builder | ✅ |
 | M3 — Active workout, ghost sets, supersets | ✅ |
 | M4 — Drop sets | ✅ |
 | M5 — Rest timer + notifications | ✅ |
-| M6 — Live Activity | designed, not built ([design doc](docs/M6-live-activity-design.md)) |
+| M6 — Live Activity + Dynamic Island | ✅ ([design doc](docs/M6-live-activity-design.md)) |
 | M7 — Finish flow + personal records | ✅ |
-| M8 — Analytics & explainers | not started |
-| M9–M11 | not started |
+| M8 — Analytics & explainers | ✅ |
+| M9 — CSV export, Apple Health sync | ✅ |
+| M10 — Share cards, animal ladder, Instagram Stories | ✅ |
+| M11 — Onboarding, accessibility, units, widgets | ✅ |
+
+Beyond the milestone list: home-screen widgets, cardio-console OCR, split templates, a plate calculator, and kg/lb units.
+
+Two things are deliberately outstanding rather than unfinished — artwork, which needs files rather than code ([`docs/ARTWORK.md`](docs/ARTWORK.md)), and Apple Calendar sync, which is an open product decision. Both are tracked in the [session log](docs/SESSION-LOG.md).
 
 See the [Build Order](PRD.md#16-build-order--testflight-expectations) in the PRD for what each milestone covers.
 
@@ -49,7 +55,8 @@ The Xcode project is generated from [`project.yml`](project.yml) by XcodeGen. `p
 - **SwiftUI + SwiftData**, iOS 17+ minimum deployment target
 - No third-party dependencies
 - No network calls of any kind in V1 — fully offline
-- Data lives in an App Group container from day one, so a future Live Activity / widget extension (see PRD §8) can share the same store without a migration
+- Two targets: the app, and `RerackWidget` for the Live Activity and home-screen widgets. They share the SwiftData store through an App Group (`group.com.mudit.logbook`) and the code in [`Shared/`](Shared)
+- Weights are stored in kilograms everywhere — the model, the CSV, the HealthKit bridge. Pounds are a display conversion applied at the edge ([`Shared/Weight.swift`](Shared/Weight.swift)), so switching units never rewrites a row
 
 ## Distribution
 

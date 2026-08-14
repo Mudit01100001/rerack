@@ -4,6 +4,86 @@ Running record of what shipped, what's blocked, and what the next session should
 
 ---
 
+## Session 2 — 2026-08-14
+
+### Where the project stands
+
+**V1 is feature-complete.** M6 and M8–M11 all shipped this session, closing every milestone in the PRD build order. Seventeen commits. The build is green and every feature below was exercised on the simulator or a physical device before being called done.
+
+Version is at `1.0 (3)` in `project.yml`. Build 3 was archived successfully but **not uploaded** — that's the one mechanical thing left over.
+
+### What shipped
+
+| Area | Detail |
+|---|---|
+| **M6 — Live Activity** | Lock Screen + all four Dynamic Island layouts. `LiveActivityIntent` ticks a set without unlocking, ±15s and skip on the rest phase. Verified on device. |
+| **M8 — Analytics** | Exercise detail (Summary/History/How To), Swift Charts progress, PR cards, profile dashboard, all 13 explainer entries. |
+| **M9 — Data** | CSV export, HealthKit read (bodyweight, body fat) and write (workouts). |
+| **M10 — Share** | Four card styles, animal ladder, Instagram Stories hand-off, confetti, save to Photos. |
+| **M11 — Polish** | Onboarding, dominant hand, accessibility pass, units. |
+| **Home-screen widgets** | Day-wise split selector (deep-links straight into a workout) and a streak + contribution grid. |
+| **Cardio OCR** | Vision-based console scanner with a preprocessing pipeline. Never auto-submits — see below. |
+| **Splits & templates** | Five importable templates including the user's own PPL. 42 exercise references verified against the catalogue. |
+| **Units** | kg/lb throughout. **Kilograms remain the storage unit permanently** — every `…Kg` property, `_kg` CSV column and Health bridge stays metric; pounds are a display conversion at the edge in [`Shared/Weight.swift`](../Shared/Weight.swift). Round-trip drift measured at zero. |
+| **Design system** | [`DesignSystem.swift`](../Rerack/App/DesignSystem.swift) — golden-ratio type scale, 4pt spacing, concentric radii via `Outer R = Inner R + Padding`. |
+
+**Terminology is now split > workout > exercise.** The word "routine" appears in no user-facing string. Type names still say `Routine` internally; renaming them is a mechanical refactor nobody has needed yet.
+
+### 🔴 What's actually left
+
+**1. Design tweaks — Instagram card, Dynamic Island, widgets.** All three work on device; the user reports they need visual refinement but hasn't specified what. **Get screenshots before changing anything.** Every time this session a visual issue was fixed by reasoning rather than looking, the wrong element got changed — the clearest case being a request to change button corner radii that turned into rebuilding the container. Ask what's on screen; don't infer it.
+
+**2. Artwork — blocked on files, not code.** The user is making it. All plumbing is done and documented in [`ARTWORK.md`](ARTWORK.md), with every expected filename in [`artwork-manifest.txt`](artwork-manifest.txt). Drop-in works with no code change.
+
+  A real bug was found and fixed while writing that doc: artwork must live in **`Shared/Artwork.xcassets`**, not `Rerack/Assets.xcassets`. The Live Activity runs in a separate process that can only read its own bundle, so anything in the app's catalogue would have been invisible to it — the Lock Screen thumbnail would have stayed a glyph forever with no error to explain why. Verified by `assetutil`-ing both compiled `Assets.car` files.
+
+**3. Apple Calendar — an open decision, not a task.** Nothing is built; there is no EventKit code in the repo. The proposal was: a dedicated app-owned calendar with recurring all-day events per split day, so removing the sync deletes only our events. Owning the calendar is the whole safety argument. The user said "idk how to test" — worth knowing the Simulator has a working Calendar app, so this is verifiable end-to-end without a device. Google Calendar stays out: OAuth plus a network round-trip would break §12.2's offline promise, and adding a Google account to Apple Calendar gets the same result for free.
+
+**4. TestFlight build 3 upload.** Archive succeeded; upload never happened. External testing additionally needs a **privacy policy URL** because the app touches HealthKit. Session 1's external-group blocker (below) was never resolved and may still bite.
+
+**5. Deferred and still deferred.** Ghost sets don't reproduce a drop chain into the next session (PRD §7.9) — needs a ghost-format change. Crash reporting is still untouched; start with TestFlight Analytics and the Xcode Organizer before anything server-side.
+
+### Bugs worth remembering
+
+**Data loss, found by accident.** Routine self-heal ran `templates[completed.count...]`. For an exercise with *zero* completed sets that expression deletes **all** targets — so skipping one exercise permanently wiped its plan and gutted imported templates. Fixed by guarding `if !completed.isEmpty, templates.count > completed.count`. It was found while testing confetti, not by any test. A range expression whose lower bound comes from a count is worth a second look every single time.
+
+**Un-ticked drop rows vanished on relaunch** — the Session 1 carry-over that violated Principle 4. Fixed by persisting drop rows at creation.
+
+**Confetti took three attempts,** and the two failures are both instructive:
+- `TimelineView(.animation(paused:))` captures its schedule at build time and never restarts.
+- Animating a `progress` value with `withAnimation` interpolates the *endpoint* modifier values, so opacity computed to 0 at both ends and every piece fell fully transparent.
+
+  The fix was `TimelineView(.animation)` + `Canvas` for genuine per-frame evaluation. Verified by temporarily stretching the duration to 20s, screenshotting mid-fall, then restoring 3.4s — a trick worth reusing on any animation that "does nothing".
+
+**Environment keys don't cross `fullScreenCover` reliably.** Dominant hand was saved correctly in SQLite but never reached the set rows. Re-inject `.environment(...)` on the cover's content.
+
+**`tabViewBottomAccessory` draws its container as soon as it's attached,** leaving a permanent blank pill. Branch on whether the modifier is applied at all, not on the content inside it.
+
+**A `Menu` whose label contains a `Spacer` anchors its popover to the centre of the screen** — the label becomes full-width. Move the `Spacer` outside the `Menu`.
+
+**OCR crops landed off-image while looking correct.** `scaledToFit` letterboxed inside a larger `ZStack`; draw and store shared the same wrong transform, so the boxes rendered exactly where expected and cropped somewhere else entirely. Size the drawing surface to the image.
+
+### Two corrected assumptions, recorded so they aren't re-researched
+
+- **There is no "Apple Intelligence image model" API.** Foundation Models is text-only and hardware-gated to iPhone 15 Pro and up. Vision is the path for console OCR and it runs everywhere.
+- **There is no separate Apple Fitness SDK.** Fitness is a HealthKit consumer; writing workouts to HealthKit is the whole integration.
+
+**Calories are deliberately not written to HealthKit.** Without heart-rate data any figure would be invented, and Health passes it to other apps as fact.
+
+### The OCR accuracy spike (§22.1), and why it shaped the UI
+
+Whole-image OCR dropped a field on a clean photo and returned garbage on a blurred one. Naive crop-and-upscale scored 0/4. The recipe that worked — invert, greyscale, contrast 1.6, 2× upscale, and an **80px white margin**, which is not optional — scored 9/12.
+
+One failure read `520` as `025`: reversed digits, a plausible wrong number that a user would never catch. Live verification then read `2415` as `2419`. That single class of failure is the entire argument for the scanner proposing values into an editable field and **never auto-submitting**.
+
+### Verification habits that earned their keep
+
+- **Read the SQLite store directly** rather than trusting the screen. The units work was confirmed by seeing `20.0` and `12.5` still stored as kilograms while the UI showed `44.1` and `27.6`.
+- **Stretch an animation's duration** to screenshot a frame that would otherwise be impossible to catch.
+- **Inspect the compiled bundle** (`assetutil`) to prove a resource actually reached the process that needs it.
+
+---
+
 ## Session 1 — 2026-08-07 → 2026-08-08
 
 ### Where the project stands
