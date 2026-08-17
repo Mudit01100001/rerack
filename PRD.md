@@ -316,11 +316,15 @@ The **Previous** column and the ghost values come from the same source, so they 
 
 Full-swipe enabled both directions. Deleting shows a 4-second `Set deleted · UNDO` toast.
 
+> ✅ **Met as of 2026-08-18**, via `SwipeActionRow` rather than `.swipeActions`. Swipe left reveals Drop + Delete; swipe right appends a set carrying this row's values. `.swipeActions` is honoured on `List` rows only and was inert here for the whole of V1 — the replacement drives the row from a `UIPanGestureRecognizer` installed on the enclosing scroll view, gated to horizontal movement inside the row's bounds, because a SwiftUI `DragGesture` loses the arena to the row's own text fields. Full-swipe, rubber-banding, one-open-row and VoiceOver actions are all reproduced. The 4-second `Set deleted · UNDO` toast is **still not built**.
+
 **`+ Add Set`** appends a row pre-filled from the *last completed set of that exercise in this session* — not the historical ghost — because the likely intent is "one more like that."
 
 ### 7.4 Exercise card actions (`···`)
 
 Add note · Reorder · Replace exercise · Remove · Set rest timer · **Add to superset** · **Add drop set to last set**
+
+> ⚠️ **Partially built as of 2026-08-18.** The menu now ships Set Rest Timer, Plate Calculator, Add to Superset, Remove from Superset, **Add Drop Set to Last Set**, **Delete Last Set** and Remove Exercise. The two additions are permanent failsafes, not a stopgap: a swipe is invisible until you already know it exists, so every row action must also be reachable from the menu. Add note, Reorder and Replace exercise remain unbuilt.
 
 ### 7.5 Rest timer
 
@@ -447,6 +451,8 @@ Child rows are indented, marked `D`, and visually tethered to the parent with a 
 - Ghost sets reproduce the full drop chain next session
 
 **CSV:** `set_type = drop`, plus `parent_set_index` and `drop_position`.
+
+> ✅ **Working and verified end to end as of 2026-08-18.** Creation was unreachable for the whole of V1 — the only `addDrop` call sites went through `SetRowView`'s inert `.swipeActions`, and the `···` entry §7.4 promises was never built — so nothing downstream had ever run. Both routes now exist. Verified on the simulator and against `ZSETLOG`: the row pre-fills at −20% rounded to 2.5 kg, persists as `set_type = drop` with a `parentSetID`, counts fully toward volume, suppresses rest while the chain is open, and reproduces as an un-ticked row the next session the parent is ticked.
 
 ---
 
@@ -1233,8 +1239,8 @@ You mentioned getting to TestFlight within a day. Worth separating two things:
 |---|---|---|---|
 | **M1 — Skeleton** ✅ *built* | 4-tab nav (Home/Workout/Cardio/Profile), SwiftData schema **incl. App Group**, exercise catalogue seed (190 exercises), library browse/search/create, **Cardio manual entry + photo attach** (§21), **Appearance setting** (§10.2) | 3–4 days | ✅ |
 | **M2 — Routines** ✅ *built* | Create/edit/delete/duplicate, folders, set templates, **superset grouping in the editor**. Reorder is up/down buttons rather than drag-to-reorder — a deliberate simplification, noted in code, upgradeable later. "Start Routine" stays disabled — that's M3. | 4–5 days | ✅ |
-| **M3 — The Core** ✅ *built* | Active workout, set rows, tick, ghost sets, swipe-to-delete, add/remove exercises, live stats, crash recovery, cross-tab banner, basic rest timer, **mid-workout supersets incl. auto-detection (§7.8.1)** | 1.5 weeks | ✅ **ship it** |
-| **M4 — Supersets & drop sets** ✅ *built* | Round-robin pointer, grouped rendering, drop chains, rest suppression rules. Supersets landed early in M3; M4 added drop chains (`+ Drop` swipe, −20%/2.5 kg pre-fill) and the two-gate rest rule. **Known gap:** ghost sets don't yet reproduce a drop chain next session (§7.9 closing bullet) — deferred to M8, needs a ghost-format change. | 1 week | ✅ |
+| **M3 — The Core** ✅ *built* | Active workout, set rows, tick, ghost sets, swipe-to-delete, add/remove exercises, live stats, crash recovery, cross-tab banner, basic rest timer, **mid-workout supersets incl. auto-detection (§7.8.1)**. Swipe-to-delete was dead for the whole of V1 on an inert `.swipeActions` modifier; restored 2026-08-18 via `SwipeActionRow`. The `UNDO` toast is still outstanding. | 1.5 weeks | ✅ |
+| **M4 — Supersets & drop sets** ✅ *built* | Round-robin pointer, grouped rendering, drop chains, rest suppression rules. `+ Drop` was unreachable from M4 until 2026-08-18 — exposed only through an inert `.swipeActions` — so no drop set could be created and nothing downstream had ever executed. Now reachable by swipe and from `···`, and verified end to end against the store. | 1 week | ✅ |
 | **M5 — Rest timer** ✅ *built* | Wall-clock timer, per-exercise config, local notifications | 3–4 days | ✅ |
 | **M6 — Live Activity** ✅ *built* | Widget extension, all four layouts, `LiveActivityIntent` tick, state machine, background relaunch. Shipped with ±15s and skip on the Lock Screen, reversing the design doc's §10 call to keep one target per phase. | 1.5 weeks | ✅ |
 | **M7 — Finish flow** | Summary screen, photo, tags, PR detection, routine value updating | 1 week | ✅ |

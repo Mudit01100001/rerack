@@ -1,4 +1,13 @@
 import SwiftUI
+
+/// Reports the scroll container's offset so the dismiss gesture can tell a
+/// scroll from a dismiss.
+private struct ScrollOffsetKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
 import SwiftData
 import AudioToolbox
 import WidgetKit
@@ -32,6 +41,12 @@ struct ActiveWorkoutView: View {
     @State private var pendingRestContent: RestNotificationScheduler.Content?
 
     @State private var restCompleteBanner: RestNotificationScheduler.Content?
+    /// Drives the dismiss gate above. Anything within a few points of the top
+    /// counts as "at the top" — demanding exactly zero makes the gesture feel
+    /// broken after a rubber-band bounce.
+    @State private var isScrolledToTop = true
+    /// Only a drag beginning in the upper third of the screen can dismiss.
+    private var dismissZoneHeight: CGFloat { UIScreen.main.bounds.height / 3 }
     @State private var bannerDismissTask: Task<Void, Never>?
     @State private var isShowingNotificationPrimer = false
 
@@ -96,6 +111,16 @@ struct ActiveWorkoutView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    GeometryReader { proxy in
+                        Color.clear.preference(
+                            key: ScrollOffsetKey.self,
+                            value: proxy.frame(in: .named("workoutScroll")).minY
+                        )
+                    }
+                    .frame(height: 0)
+
+                    grabPill
+
                     statsHeader
 
                     if let restingExercise,
@@ -104,8 +129,12 @@ struct ActiveWorkoutView: View {
                         RestTimerBar(
                             restStartedAt: restStartedAt,
                             restEndsAt: restEndsAt,
-                            onSkip: { clearRest() },
+                            onSkip: {
+                                Haptics.play(.timerSkipped)
+                                clearRest()
+                            },
                             onAdjust: { delta in
+                                Haptics.play(.timerAdjusted)
                                 adjustRest(by: delta, for: restingExercise)
                             }
                         )
@@ -141,14 +170,32 @@ struct ActiveWorkoutView: View {
             }
             // Grouped grey behind the cards — without it the cards are the
             // same colour as the page and the grouping does nothing.
+            // Item 8: the keyboard used to have exactly one exit — the
+            // collapse chevron, which also parked the workout. Swiping the
+            // list now dismisses it, which is what every other iOS list does.
+            .scrollDismissesKeyboard(.interactively)
+            .coordinateSpace(name: "workoutScroll")
+            .onPreferenceChange(ScrollOffsetKey.self) { offset in
+                isScrolledToTop = offset > -8
+            }
             .background(Color(.systemGroupedBackground))
-            // Swipe down from anywhere to park the session, the same gesture
-            // a sheet would give. `minimumDistance` keeps it from competing
-            // with the scroll view, and only a downward drag counts so
-            // scrolling up never dismisses by accident.
+            // Swipe down to park the session — but **only from the top of
+            // the list**. This gesture used to be unconditional, so a normal
+            // downward scroll from anywhere in a long workout threw the whole
+            // session off screen. A scroll and a dismiss are the same finger
+            // movement; the only thing that separates them is whether there
+            // is anything left to scroll.
             .simultaneousGesture(
                 DragGesture(minimumDistance: 40)
                     .onEnded { value in
+                        // Two gates, both required. At the top of the list a
+                        // downward drag has nowhere to scroll, so it can only
+                        // mean dismiss — but only if it *started* up top too.
+                        // A drag begun low on the screen is someone reaching
+                        // for a set row, and throwing the session away on that
+                        // is what made the gesture feel hostile.
+                        guard isScrolledToTop else { return }
+                        guard value.startLocation.y < dismissZoneHeight else { return }
                         let isDownward = value.translation.height > 90
                         let isMostlyVertical = abs(value.translation.height) > abs(value.translation.width) * 2
                         if isDownward, isMostlyVertical { onMinimize() }
@@ -515,12 +562,39 @@ struct ActiveWorkoutView: View {
                 isShowingNotificationPrimer = true
             }
         } else {
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            // The one moment in a workout where the app speaks first, so
+            // it gets the only ascending pattern in the vocabulary.
+            Haptics.play(.restComplete)
             if currentProfile()?.restTimerSoundEnabled ?? true {
                 AudioServicesPlaySystemSound(1005) // PRD §10.2 "Rest timer sound"
             }
             presentRestCompleteBanner(content)
         }
+    }
+
+    /// A visible handle for the dismiss gesture. The gesture existed before
+    /// this and was invisible, so the only *discoverable* way out was the
+    /// chevron in the toolbar — and the invisible gesture fired constantly by
+    /// accident. Making it a control fixes both halves.
+    private var grabPill: some View {
+        Capsule()
+            .fill(Color.secondary.opacity(0.35))
+            .frame(width: 40, height: 5)
+            .frame(maxWidth: .infinity)
+            .padding(.top, DS.Space.xxs)
+            .padding(.bottom, DS.Space.xxs)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 12)
+                    .onEnded { value in
+                        if value.translation.height > 40 { onMinimize() }
+                    }
+            )
+            .onTapGesture { onMinimize() }
+            .accessibilityElement()
+            .accessibilityLabel("Minimise workout")
+            .accessibilityHint("Drag down or double tap to park this session")
+            .accessibilityAddTraits(.isButton)
     }
 
     // MARK: - Rest notification scheduling (§7.5)

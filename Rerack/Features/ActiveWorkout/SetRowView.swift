@@ -21,6 +21,10 @@ struct SetRowView: View {
     /// nil hides the "+ Drop" swipe action — callers only pass a closure for
     /// a completed row (PRD §15: blocked on an incomplete parent).
     var onAddDrop: (() -> Void)? = nil
+    /// Leading swipe: append another set carrying this row's values. nil on
+    /// drop rows, where "one more like that" has no meaning — a chain is
+    /// extended with `+ Drop`, not duplicated.
+    var onDuplicate: ((_ weightKg: Double, _ reps: Int) -> Void)? = nil
 
     @Environment(\.dominantHand) private var dominantHand
     @Environment(\.unitPreference) private var unit
@@ -49,13 +53,15 @@ struct SetRowView: View {
     /// the thumb that reaches it isn't crossing the row over the numbers it
     /// just entered. Everything else keeps its order.
     var body: some View {
-        HStack(spacing: DS.Space.xs) {
-            if dominantHand == .left {
-                tickButton
-            }
-            rowContent
-            if dominantHand == .right {
-                tickButton
+        SwipeActionRow(leading: leadingActions, trailing: trailingActions) {
+            HStack(spacing: DS.Space.xs) {
+                if dominantHand == .left {
+                    tickButton
+                }
+                rowContent
+                if dominantHand == .right {
+                    tickButton
+                }
             }
         }
         .onAppear(perform: populate)
@@ -127,27 +133,66 @@ struct SetRowView: View {
             .foregroundStyle(.tertiary)
             .frame(width: 66, alignment: .leading)
 
-            entryField(text: $weightText, placeholder: unit.abbreviation, width: 58, keyboard: .decimalPad)
-            entryField(text: $repsText, placeholder: "reps", width: 48, keyboard: .numberPad)
+            entryField(
+                text: $weightText,
+                placeholder: unit.abbreviation,
+                width: 58,
+                keyboard: .decimalPad,
+                // One plate pair, expressed in whatever unit is on screen —
+                // scrubbing in 2.5 lb steps would be uselessly fine.
+                scrubStep: unit == .kg ? 2.5 : 5,
+                scrubRange: 0...1000,
+                scrubsAsInteger: false
+            )
+            entryField(
+                text: $repsText,
+                placeholder: "reps",
+                width: 48,
+                keyboard: .numberPad,
+                scrubStep: 1,
+                scrubRange: 0...100,
+                scrubsAsInteger: true
+            )
 
             Spacer(minLength: 0)
         }
-        .swipeActions(edge: .trailing) {
-            if existingSet != nil {
-                Button(role: .destructive, action: onDeleteExisting) {
-                    Label("Delete", systemImage: "trash")
+    }
+
+    /// PRD §7.3/§7.9. These used to be declared with `.swipeActions`, which
+    /// `List` alone honours — inside this card's `VStack` the modifier was
+    /// inert, so Delete and `+ Drop` were unreachable for the whole of V1.
+    /// `SwipeActionRow` reimplements the interaction for a non-`List` row.
+    private var trailingActions: [SwipeAction] {
+        var actions: [SwipeAction] = []
+        // PRD §7.9/§7.4: offered only on a completed row — the caller
+        // withholds `onAddDrop` entirely for anything not yet ticked
+        // (§15 "drop set added to an incomplete parent" is blocked).
+        if let onAddDrop {
+            actions.append(
+                SwipeAction(label: "Drop", systemImage: "arrow.turn.down.right", tint: .orange) {
+                    Haptics.play(.dropAdded)
+                    onAddDrop()
                 }
-            }
-            // PRD §7.9/§7.4: offered only on a completed row — the caller
-            // withholds `onAddDrop` entirely for anything not yet ticked
-            // (§15 "drop set added to an incomplete parent" is blocked).
-            if let onAddDrop {
-                Button(action: onAddDrop) {
-                    Label("+ Drop", systemImage: "arrow.turn.down.right")
-                }
-                .tint(.orange)
-            }
+            )
         }
+        if existingSet != nil {
+            actions.append(
+                SwipeAction(label: "Delete", systemImage: "trash", tint: .red, isDestructive: true) {
+                    onDeleteExisting()
+                }
+            )
+        }
+        return actions
+    }
+
+    private var leadingActions: [SwipeAction] {
+        guard let onDuplicate else { return [] }
+        return [
+            SwipeAction(label: "Add Set", systemImage: "plus", tint: .accentColor) {
+                let weightKg = Weight.parseToKilograms(weightText, in: unit) ?? 0
+                onDuplicate(weightKg, Int(repsText) ?? 0)
+            }
+        ]
     }
 
     /// Editable fields carry a filled background and a border; static text
@@ -157,7 +202,10 @@ struct SetRowView: View {
         text: Binding<String>,
         placeholder: String,
         width: CGFloat,
-        keyboard: UIKeyboardType
+        keyboard: UIKeyboardType,
+        scrubStep: Double,
+        scrubRange: ClosedRange<Double>,
+        scrubsAsInteger: Bool
     ) -> some View {
         TextField(placeholder, text: text)
             .keyboardType(keyboard)
@@ -174,9 +222,18 @@ struct SetRowView: View {
                     .strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.5)
             )
             .onChange(of: text.wrappedValue) { _, _ in hasEdited = true }
+            // §7.2: press-and-hold, then drag up or down to nudge the value
+            // without summoning the keyboard.
+            .numberScrub(
+                text: text,
+                step: scrubStep,
+                range: scrubRange,
+                formatsAsInteger: scrubsAsInteger
+            )
             // Without this VoiceOver reads a bare number with no idea which
             // column it came from.
             .accessibilityLabel(placeholder == "reps" ? "Repetitions" : "Weight in \(unit == .kg ? "kilograms" : "pounds")")
+            .accessibilityHint("Press and hold, then drag up or down to change")
     }
 
     private func populate() {
@@ -208,12 +265,18 @@ struct SetRowView: View {
 
     private func toggle() {
         if isCompleted {
+            Haptics.play(.setUncompleted)
             onUncomplete()
         } else {
             // PRD §7.2: empty reps blocks completion; 0 kg is allowed
             // (bodyweight exercises, §13.1).
-            guard let reps = Int(repsText), reps > 0 else { return }
+            guard let reps = Int(repsText), reps > 0 else {
+                // Silently doing nothing on a tap reads as a broken button.
+                Haptics.play(.failure)
+                return
+            }
             let weightKg = Weight.parseToKilograms(weightText, in: unit) ?? 0
+            Haptics.play(.setCompleted)
             onComplete(weightKg, reps)
         }
     }

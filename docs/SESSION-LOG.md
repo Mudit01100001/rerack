@@ -4,6 +4,110 @@ Running record of what shipped, what's blocked, and what the next session should
 
 ---
 
+## Session 4 — 2026-08-18
+
+### The drop-set bug is fixed, and the fix is verified end to end
+
+Session 3 found that `+ Drop` and swipe-to-delete were unreachable: both were declared with `.swipeActions`, which SwiftUI honours on `List` rows only, while the active workout screen is a `ScrollView` of cards.
+
+**`List` was rejected, and the reasoning in Session 3 was wrong about why.** A `List` with `.listStyle(.plain)`, hidden separators, clear row backgrounds and zero insets renders identically to the current cards — the "plain text look" is the *default* styling, not a property of `List`. The real blocker is structural: drop rows must be independently swipeable while sharing their parent's alternating band, and a flat list of rows cannot express that nesting.
+
+So the interaction was reimplemented in [`SwipeActionRow.swift`](../Rerack/App/SwipeActionRow.swift): finger-tracking with rubber-banding, a detent haptic at the commit threshold, full-swipe, one-open-row-at-a-time, and VoiceOver actions (a bare gesture is invisible to the screen reader, so fixing a bug would otherwise have broken §17).
+
+**A SwiftUI `DragGesture` was not enough, and finding out cost a full build cycle.** With the gesture attached in SwiftUI the swipe fired from the set-number column and did nothing when begun on the kg or reps field — which is most of the row's width. The fields' own UIKit recognizers win the gesture arena before a parent `simultaneousGesture` sees the touch. The working version installs a `UIPanGestureRecognizer` on the enclosing scroll view and gates it in `gestureRecognizerShouldBegin` to "decisively horizontal, and inside my bounds." Vertical scrolling and taps into the fields are both untouched.
+
+**Verified on the simulator, then against the store:**
+
+| Step | Result |
+|---|---|
+| Swipe from a text field | Drop + Delete revealed |
+| Tap Drop | Row `↳ D` at 20 kg (24 − 20%, rounded to 2.5) |
+| Store after ticking | `20.0 / 8 / drop / has_parent = 1` |
+| Volume | 448 = 288 + 160 — drops count fully (§7.9) |
+| Rest after ticking parent | **Suppressed** — chain still open, the two-gate rule |
+| Next session, tick set 1 | `↳ D` materialises with Previous `20×8` |
+
+Every one of those paths had been written and none had ever run. `···` now also carries **Add Drop Set to Last Set** and **Delete Last Set** as permanent failsafes — a swipe is invisible until you know it exists.
+
+### Haptics
+
+The app contained exactly one haptic call. [`Haptics.swift`](../Rerack/App/Haptics.swift) adds a vocabulary: light taps for ticks, a firmer one for deletes, a detent on swipe threshold, selection ticks while scrubbing, and three genuine Core Haptics *patterns* — a rising two-tap chime when rest ends (the one moment the app speaks first, so the only ascending pattern), an ascending swell for a PR, and a decaying burst matched to the confetti's fall rather than one thump at the top.
+
+Generators are cached and pre-warmed at launch: a cold Taptic Engine lands the first tap tens of milliseconds late, which made the first set of a workout feel unresponsive while every later one felt fine.
+
+### Fixes from the full-workout test
+
+| # | Item | State |
+|---|---|---|
+| 2 | Swipe left to delete, right to add a set carrying the same values; every add-set path now inherits this session's last entry | ✅ built |
+| 3 | Press-and-hold a kg/reps field, drag to scrub, value floats above the field | ✅ built, not gesture-tested |
+| 4 | Scroll no longer throws the session away | ✅ verified |
+| 5 | Lock Screen decluttered; rest bar **drains** instead of filling | ✅ built |
+| 6 | Lock Screen ground is translucent black, not grey | ✅ built |
+| 8 | Swipe the list to dismiss the keyboard | ✅ built |
+| 12 | Save-to-Photos alert → calm top toast | ✅ built |
+| 14 | Consistency widget spans full width, day letters added | ✅ built |
+| 15 | Day letters on the Home consistency grid | ✅ verified |
+
+**Item 4's cause is worth recording.** An unconditional `simultaneousGesture` dismissed on *any* downward drag over 90pt. A scroll and a dismiss are the same finger movement; the only thing separating them is whether there is anything left to scroll. Two gates now: at the top of the list, **and** the drag began in the upper third. A visible grab pill replaces what was an invisible gesture nobody could find and everybody triggered.
+
+**Item 5's progress bar was a real inversion.** `ProgressView(countsDown: false)` filled left-to-right, so a *full* bar meant rest was **over** — the opposite of the intuition for a countdown.
+
+### 🔴 Not done — carried to next session
+
+Honest list. These were asked for in the same pass and are not built:
+
+1. **Item 1** — workout tile should open an exercise panel with its own Start Workout, separate from the Start button.
+2. **Item 9** — slider instead of ±15s in-app (Live Activity keeps the buttons).
+3. **Item 10** — the header clock shows total time during rest, which is what makes rest vs. workout state ambiguous.
+4. **Item 11** — on finishing a diverged template: "Save as new workout" / "Keep the old workout". Note the second half of that request (weights carrying across workouts) is a **separate concept** and may already work via §7.3 ghost priority 1 — check before building.
+5. **Item 13** — widget rework. **WidgetKit cannot scroll at any size**, so the shippable shape is the constrained one: current workout, a tick button, tap-through.
+6. **Cardio console rebuild** — remove the draw-a-box flow, remove the contradictory "Attach a photo / auto-reading isn't built yet" caption ([`AddCardioSessionView.swift:93`](../Rerack/Features/Cardio/AddCardioSessionView.swift), now false), and replace with label-proximity parsing over whole-frame OCR. **Blocked on a console photo** to tune against. `DataScannerViewController` (VisionKit, iOS 16+) is the API behind Live Text and is the right surface. Foundation Models is **text-only** — useful for turning OCR strings into structured fields, useless for reading pixels.
+7. **Onboarding** — the swipe gestures from item 2 need a slide, since a swipe nobody knows about is the same as no swipe.
+
+### Still true from Session 3
+
+TestFlight build 3 archived but never uploaded; external testing likely blocked on a Beta App Review submission that was never made. Artwork still needs files, not code.
+
+---
+
+## Session 3 — 2026-08-14
+
+### Drop sets cannot be created. The feature is unreachable, not merely incomplete.
+
+Session 2 listed "ghost sets don't reproduce a drop chain" as deferred. That specific gap **was already closed** in `6b0ca8a` — `GhostSet.drops` carries the chain, and `ExerciseCardView.materialiseGhostDrops` writes it back as real un-ticked rows when the parent is ticked. The doc was stale.
+
+Verifying it on the simulator turned up something worse. **`+ Drop` has no reachable entry point:**
+
+- Both `addDrop` call sites reach the user only through `SetRowView`'s `.swipeActions(edge: .trailing)`.
+- SwiftUI honours `.swipeActions` on `List` rows only. The active workout screen is a `ScrollView` → `VStack` of cards ([ActiveWorkoutView.swift:97](../Rerack/Features/ActiveWorkout/ActiveWorkoutView.swift:97), [ExerciseCardView.swift:214](../Rerack/Features/ActiveWorkout/ExerciseCardView.swift:214)). The modifier is inert.
+- PRD §7.4 promises `···` → "Add drop set to last set". That entry was never built.
+
+So there is no gesture and no menu item. **No drop set can be created, therefore no chain can ever be logged, rendered, exported, or reproduced.** Everything downstream of creation — the −20% pre-fill, the two-gate rest rule, the PR maths in §13.4, the `set_type = drop` CSV columns, the ghost reproduction — has never run against real data.
+
+**The same dead modifier also carries `Delete`.** A logged set cannot be removed from the active workout screen, and the `Set deleted · UNDO` toast in §7.3 has never appeared. Full-swipe-to-complete (§7.3) was never implemented in either direction.
+
+**How it was verified.** Fresh install, Quick Start, Alternate Hammer Curl, 20 kg × 10, ticked. Three separate trailing-swipe attempts on the completed row — a fast `swipe`, then two slow multi-point `touch_path` drags from different x origins — revealed nothing. The `···` menu was opened and screenshotted: Set Rest Timer, Plate Calculator, Add to Superset, Remove Exercise, and nothing else. Store confirmed the negative:
+
+```
+ZORDERINDEX  ZADDEDWEIGHTKG  ZREPS  ZISCOMPLETED  ZSETTYPERAW  has_parent
+0            20.0            10     1             normal       0
+```
+
+**Why nobody caught it.** A green build and a correct-looking set row prove nothing about a gesture that silently does nothing — there is no error, no log line, and the row renders exactly as designed. This is the third time on this project that reading the code and reading the screen both agreed while the actual behaviour differed; the store and the gesture had to be exercised directly.
+
+**Not fixed — it needs a design decision.** Moving the set list into a `List` to make `.swipeActions` live would forfeit the card layout, the alternating row banding and the concentric radii. The cheaper routes are a custom `DragGesture` on the row, or adding the missing `···` entries. Left for the next session rather than picked unilaterally.
+
+### Docs corrected this session
+
+- [PRD §7.3](../PRD.md) — note that no swipe gesture works
+- [PRD §7.4](../PRD.md) — what the `···` menu actually contains
+- [PRD §7.9](../PRD.md) — the chain is unreachable; ghost reproduction itself is done
+- [PRD §16.2](../PRD.md) — M3 and M4 downgraded from ✅ to ⚠️
+- Session 2's item 5 below is superseded by this entry
+
+---
+
 ## Session 2 — 2026-08-14
 
 ### Where the project stands
@@ -41,7 +145,7 @@ Version is at `1.0 (3)` in `project.yml`. Build 3 was archived successfully but 
 
 **4. TestFlight build 3 upload.** Archive succeeded; upload never happened. External testing additionally needs a **privacy policy URL** because the app touches HealthKit. Session 1's external-group blocker (below) was never resolved and may still bite.
 
-**5. Deferred and still deferred.** Ghost sets don't reproduce a drop chain into the next session (PRD §7.9) — needs a ghost-format change. Crash reporting is still untouched; start with TestFlight Analytics and the Xcode Organizer before anything server-side.
+**5. Deferred and still deferred.** ~~Ghost sets don't reproduce a drop chain into the next session (PRD §7.9) — needs a ghost-format change.~~ **Superseded by Session 3** — that gap was already closed in `6b0ca8a`; the real problem is that drop sets can't be created at all. Crash reporting is still untouched; start with TestFlight Analytics and the Xcode Organizer before anything server-side.
 
 ### Bugs worth remembering
 

@@ -20,6 +20,9 @@ struct WorkoutSummaryView: View {
     @State private var newTagText = ""
     @State private var showingShareCards = false
     @State private var showingConfetti = false
+    /// A PR should be felt once, when the screen appears — not on every
+    /// re-render of the summary.
+    @State private var hasPlayedRecordHaptic = false
 
     private var sortedExercises: [WorkoutExercise] {
         (workout.exercises ?? []).sorted { $0.orderIndex < $1.orderIndex }
@@ -132,6 +135,13 @@ struct WorkoutSummaryView: View {
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
+            .task {
+                // Three ascending taps and a swell. A PR interrupts nothing,
+                // so it is the one haptic in the app allowed to take its time.
+                guard !hasPlayedRecordHaptic, newRecordCount > 0 else { return }
+                hasPlayedRecordHaptic = true
+                Haptics.play(.personalRecord)
+            }
             .task(id: photoItem) {
                 guard let photoItem, let data = try? await photoItem.loadTransferable(type: Data.self) else { return }
                 // Replace, don't accumulate — PRD §9.4 is one photo per workout.

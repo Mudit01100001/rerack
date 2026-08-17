@@ -23,11 +23,13 @@ struct WorkoutLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: WorkoutActivityAttributes.self) { context in
             LockScreenView(context: context)
-                // Opaque, not translucent: a see-through card puts the
-                // wallpaper behind the payload, and the payload is the one
-                // thing that has to stay readable at a glance in bad gym
-                // light. Near-black matches the app icon's ground.
-                .activityBackgroundTint(Color(red: 0.07, green: 0.07, blue: 0.08))
+                // Translucent black rather than the flat near-opaque grey
+                // this used to be. The grey read as a slab dropped on the
+                // wallpaper; black at 55% keeps the same contrast for white
+                // text — the payload still passes at a glance in bad gym
+                // light — while letting the Lock Screen show through, which
+                // is what every system-supplied Live Activity does.
+                .activityBackgroundTint(Color.black.opacity(0.55))
                 .activitySystemActionForegroundColor(.white)
         } dynamicIsland: { context in
             DynamicIsland {
@@ -138,8 +140,14 @@ private struct LockScreenView: View {
                             .font(.headline)
                             .lineLimit(1)
                     }
-                    if context.state.exerciseName != nil {
-                        Text(restingSubtitle)
+                    // Item 5: while resting, the exercise name next to the
+                    // thumbnail is enough. Repeating "Next: Set 2 of 3 ·
+                    // 20 kg × 5" under it tripled the reading load on the
+                    // one surface that has to be understood at a glance,
+                    // and the same numbers reappear in the payload row the
+                    // moment rest ends.
+                    if context.state.exerciseName != nil, context.state.restEndsAt == nil {
+                        Text(context.state.positionLabel)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -168,20 +176,6 @@ private struct LockScreenView: View {
         .padding(14)
     }
 
-    /// While resting the second line previews what's coming rather than
-    /// repeating the position — the payload row has been replaced by the
-    /// timer, so this is the only place the next set's numbers still appear.
-    private var restingSubtitle: String {
-        guard context.state.restEndsAt != nil else { return context.state.positionLabel }
-        switch context.state.payload {
-        case .known(let weightKg, let reps):
-            return "Next: \(context.state.positionLabel.lowercased()) · \(Weight.format(kg: weightKg, in: context.state.unit, includeUnit: true)) × \(reps)"
-        case .repsOnly(let reps):
-            return "Next: \(context.state.positionLabel.lowercased()) · \(reps) reps"
-        case .unknown:
-            return "Next: \(context.state.positionLabel.lowercased())"
-        }
-    }
 }
 
 /// Round exercise thumbnail. Renders a dumbbell glyph until real artwork is
@@ -218,7 +212,11 @@ private struct RestControls: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            ProgressView(timerInterval: startedAt...max(endsAt, startedAt.addingTimeInterval(1)), countsDown: false) {
+            // Item 5: this is a *timer*, so the bar drains. It used to fill
+            // left-to-right, which is stopwatch behaviour and read as "time
+            // accumulating" when the thing being shown is time remaining —
+            // a full bar meant rest was over, the opposite of the intuition.
+            ProgressView(timerInterval: startedAt...max(endsAt, startedAt.addingTimeInterval(1)), countsDown: true) {
                 EmptyView()
             } currentValueLabel: {
                 EmptyView()

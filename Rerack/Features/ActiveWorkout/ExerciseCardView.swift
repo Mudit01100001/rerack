@@ -45,6 +45,11 @@ struct ExerciseCardView: View {
     @State private var showingGroupPicker = false
     @State private var showingRestPicker = false
     @State private var showingPlateCalculator = false
+    /// Values seeded into a row that was appended by `+ Add Set` or a
+    /// leading swipe, keyed by row index. Kept as view state rather than
+    /// written to the store because an un-ticked row is still a *suggestion*
+    /// (§4 Principle 5) — persisting it would make it read as fact.
+    @State private var addedRowSeed: [Int: GhostSet] = [:]
 
     /// Every top-level set row that exists in the store, completed or not —
     /// drops are rendered as children of these (§7.9), so they stay out of
@@ -189,6 +194,25 @@ struct ExerciseCardView: View {
             } label: {
                 Label("Add to Superset", systemImage: "link")
             }
+            // §7.4 promised these here and they were never built. They are
+            // also the failsafe for the swipe actions: a swipe is invisible
+            // until you know it exists, so every destructive or additive row
+            // action must be reachable from the menu too.
+            if let lastCompleted = topLevelSets.last(where: \.isCompleted) {
+                Button {
+                    Haptics.play(.dropAdded)
+                    addDrop(from: lastCompleted)
+                } label: {
+                    Label("Add Drop Set to Last Set", systemImage: "arrow.turn.down.right")
+                }
+            }
+            if let lastRow = topLevelSets.last {
+                Button(role: .destructive) {
+                    deleteExisting(index: lastRow.orderIndex)
+                } label: {
+                    Label("Delete Last Set", systemImage: "minus.circle")
+                }
+            }
             if workoutExercise.supersetGroup != nil {
                 Button(action: onUngroup) {
                     Label("Remove from Superset", systemImage: "link.badge.minus")
@@ -217,7 +241,7 @@ struct ExerciseCardView: View {
                 // Only a *completed* row is passed as `existingSet` — an
                 // un-ticked one reverts to its ghost, per §7.2/§7.3.
                 let topSet = setLog(at: index).flatMap { $0.isCompleted ? $0 : nil }
-                let rowGhost = GhostSetResolver.ghostSet(at: index, in: ghosts)
+                let rowGhost = ghostForRow(at: index)
                 VStack(spacing: 0) {
                     SetRowView(
                         orderIndex: index,
@@ -226,7 +250,10 @@ struct ExerciseCardView: View {
                         onComplete: { weight, reps in complete(index: index, weight: weight, reps: reps) },
                         onUncomplete: { uncomplete(index: index) },
                         onDeleteExisting: { deleteExisting(index: index) },
-                        onAddDrop: topSet.map { parent in { addDrop(from: parent) } }
+                        onAddDrop: topSet.map { parent in { addDrop(from: parent) } },
+                        onDuplicate: { weightKg, reps in
+                            appendSet(seededWith: GhostSet(weightKg: weightKg, reps: reps))
+                        }
                     )
                     if let topSet {
                         dropChainRows(under: topSet, ghostDrops: rowGhost?.drops ?? [])
@@ -242,8 +269,7 @@ struct ExerciseCardView: View {
 
     private var addSetButton: some View {
         Button {
-            workoutExercise.plannedSetCount = rowCount + 1
-            onPlanChanged()
+            appendSet(seededWith: nil)
         } label: {
             Label("Add Set", systemImage: "plus")
                 .dsFont(DS.TypeScale.caption, relativeTo: .subheadline, weight: .medium)
@@ -301,6 +327,36 @@ struct ExerciseCardView: View {
         }
     }
 
+    /// PRD §7.3: a row appended mid-workout is pre-filled from **this
+    /// session's** last entry, not from the historical ghost, because the
+    /// intent behind "one more set" is "one more like the one I just did."
+    /// A row appended by a leading swipe carries that specific row's values
+    /// instead, which is what the swipe promised.
+    private func ghostForRow(at index: Int) -> GhostSet? {
+        if let seed = addedRowSeed[index] { return seed }
+        if index >= ghosts.count, let recent = lastEnteredValues {
+            return GhostSet(weightKg: recent.weightKg, reps: recent.reps)
+        }
+        return GhostSetResolver.ghostSet(at: index, in: ghosts)
+    }
+
+    /// The most recent row in this session that carries real numbers —
+    /// preferring a completed one, falling back to any row already filled in.
+    private var lastEnteredValues: (weightKg: Double, reps: Int)? {
+        let candidate = topLevelSets.last(where: \.isCompleted)
+            ?? topLevelSets.last(where: { $0.reps > 0 })
+        guard let candidate else { return nil }
+        return (candidate.addedWeightKg, candidate.reps)
+    }
+
+    private func appendSet(seededWith seed: GhostSet?) {
+        let newIndex = rowCount
+        workoutExercise.plannedSetCount = newIndex + 1
+        if let seed { addedRowSeed[newIndex] = seed }
+        Haptics.play(.setAdded)
+        onPlanChanged()
+    }
+
     // MARK: - Drop chains (§7.9)
 
     /// Renders a parent's drop chain. Every row here is a real `SetLog`,
@@ -321,7 +377,10 @@ struct ExerciseCardView: View {
                 onComplete: { weight, reps in completeDrop(drop, weight: weight, reps: reps) },
                 onUncomplete: { uncompleteDrop(drop) },
                 onDeleteExisting: { deleteDrop(drop) },
-                onAddDrop: drop.isCompleted ? { addDrop(from: drop) } : nil
+                onAddDrop: drop.isCompleted ? { addDrop(from: drop) } : nil,
+                // Duplicating a drop has no meaning — a chain is extended
+                // with `+ Drop`, never copied.
+                onDuplicate: nil
             )
         }
     }

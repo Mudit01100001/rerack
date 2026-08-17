@@ -16,6 +16,9 @@ struct ContributionGrid: View {
 
     private let cell: CGFloat = 11
     private let spacing: CGFloat = 3
+    /// Monday first — `columns` builds each week from a `firstWeekday = 2`
+    /// interval, so row 0 is always a Monday.
+    private let weekdayInitials = ["M", "T", "W", "T", "F", "S", "S"]
 
     private var calendar: Calendar {
         var calendar = Calendar.current
@@ -42,22 +45,38 @@ struct ContributionGrid: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: DS.Space.xs) {
-            ScrollViewReader { proxy in
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(alignment: .top, spacing: spacing) {
-                        ForEach(Array(columns.enumerated()), id: \.offset) { index, week in
-                            VStack(spacing: spacing) {
-                                ForEach(week, id: \.self) { day in
-                                    cellView(for: day)
-                                }
-                            }
-                            .id(index)
-                        }
+            HStack(alignment: .top, spacing: spacing) {
+                // Item 15: the same weekday gutter the widget carries, so the
+                // two grids read as one object. Without it a row of squares
+                // is unreadable — you can see *that* you trained without
+                // being able to see *which day* you trained.
+                VStack(spacing: spacing) {
+                    ForEach(Array(weekdayInitials.enumerated()), id: \.offset) { _, initial in
+                        Text(initial)
+                            .dsFont(DS.TypeScale.caption2, relativeTo: .caption2, weight: .medium)
+                            .foregroundStyle(.tertiary)
+                            .frame(width: 10, height: cell)
                     }
-                    .padding(.vertical, 2)
                 }
-                // Opens on the present, not six months ago.
-                .onAppear { proxy.scrollTo(columns.count - 1, anchor: .trailing) }
+                .padding(.vertical, 2)
+
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(alignment: .top, spacing: spacing) {
+                            ForEach(Array(columns.enumerated()), id: \.offset) { index, week in
+                                VStack(spacing: spacing) {
+                                    ForEach(week, id: \.self) { day in
+                                        cellView(for: day)
+                                    }
+                                }
+                                .id(index)
+                            }
+                        }
+                        .padding(.vertical, 2)
+                    }
+                    // Opens on the present, not six months ago.
+                    .onAppear { proxy.scrollTo(columns.count - 1, anchor: .trailing) }
+                }
             }
 
             HStack(spacing: DS.Space.xxs) {

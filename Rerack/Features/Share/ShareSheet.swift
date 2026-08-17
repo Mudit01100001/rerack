@@ -21,7 +21,7 @@ struct WorkoutCompleteView: View {
     @State private var size: ShareCardView.Size = .story
     @State private var renderedURL: URL?
     @State private var showingShareSheet = false
-    @State private var saveMessage: String?
+    @State private var toastMessage: Toast?
     @State private var showingConfetti = false
 
     private var content: ShareCardContent {
@@ -36,7 +36,12 @@ struct WorkoutCompleteView: View {
             ConfettiView(isActive: showingConfetti)
                 .allowsHitTesting(false)
         }
-        .task { showingConfetti = true }
+        .task {
+            showingConfetti = true
+            // Matched to the fall rather than fired as one thump at the top —
+            // the pattern decays over ~0.9s alongside the pieces.
+            Haptics.play(.celebration)
+        }
     }
 
     private var navigationBody: some View {
@@ -100,14 +105,7 @@ struct WorkoutCompleteView: View {
                     ActivityShareSheet(items: [renderedURL])
                 }
             }
-            .alert("Saved", isPresented: Binding(
-                get: { saveMessage != nil },
-                set: { if !$0 { saveMessage = nil } }
-            )) {
-                Button("OK") { saveMessage = nil }
-            } message: {
-                Text(saveMessage ?? "")
-            }
+            .toast($toastMessage)
         }
     }
 
@@ -198,7 +196,12 @@ struct WorkoutCompleteView: View {
         defer { size = previousSize }
         guard let url = render(), let image = UIImage(contentsOfFile: url.path) else { return }
         if !InstagramStoryShare.share(backgroundImage: image) {
-            saveMessage = "Couldn't open Instagram."
+            Haptics.play(.failure)
+            toastMessage = Toast(
+                message: "Couldn't open Instagram.",
+                systemImage: "exclamationmark.circle.fill",
+                tint: .orange
+            )
         }
     }
 
@@ -208,14 +211,31 @@ struct WorkoutCompleteView: View {
         guard let url = render(), let image = UIImage(contentsOfFile: url.path) else { return }
         PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
             guard status == .authorized || status == .limited else {
-                Task { @MainActor in saveMessage = "Photos access wasn't granted. Use Share instead." }
+                Task { @MainActor in
+                    Haptics.play(.failure)
+                    toastMessage = Toast(
+                        message: "Photos access wasn't granted.",
+                        systemImage: "exclamationmark.circle.fill",
+                        tint: .orange
+                    )
+                }
                 return
             }
             PHPhotoLibrary.shared().performChanges {
                 PHAssetChangeRequest.creationRequestForAsset(from: image)
             } completionHandler: { success, _ in
                 Task { @MainActor in
-                    saveMessage = success ? "Card saved to Photos." : "Couldn't save the card."
+                    if success {
+                        Haptics.play(.celebration)
+                        toastMessage = Toast(message: "Saved to Photos")
+                    } else {
+                        Haptics.play(.failure)
+                        toastMessage = Toast(
+                            message: "Couldn't save the card.",
+                            systemImage: "exclamationmark.circle.fill",
+                            tint: .orange
+                        )
+                    }
                 }
             }
         }
@@ -223,7 +243,8 @@ struct WorkoutCompleteView: View {
 
     private func copyText() {
         UIPasteboard.general.string = ShareCardContentBuilder.plainText(for: workout, context: modelContext, unit: unit)
-        saveMessage = "Workout copied as text."
+        Haptics.play(.setCompleted)
+        toastMessage = Toast(message: "Copied as text", systemImage: "doc.on.doc.fill", tint: .accentColor)
     }
 }
 

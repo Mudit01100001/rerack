@@ -225,20 +225,41 @@ private struct ContributionGridView: View {
         }
     }
 
+    /// Rows are weekdays, Monday first — `WidgetDataSource.recentDays` builds
+    /// the window from a `firstWeekday = 2` week boundary, so row 0 is always
+    /// a Monday and these labels can't drift out of sync with the data.
+    private let weekdayInitials = ["M", "T", "W", "T", "F", "S", "S"]
+    private let labelWidth: CGFloat = 9
+
     var body: some View {
         GeometryReader { geometry in
             let count = max(columns.count, 1)
-            let byWidth = (geometry.size.width - spacing * CGFloat(count - 1)) / CGFloat(count)
-            let byHeight = (geometry.size.height - spacing * 6) / 7
-            let cell = max(min(byWidth, byHeight), 2)
+            let gridWidth = geometry.size.width - labelWidth - spacing
+            // Width is satisfied first and height only clamps the cell's
+            // *height*. Sizing both axes off `min(byWidth, byHeight)` meant a
+            // height-constrained family shrank its cells and left a dead strip
+            // down the right-hand side — most visible at 2x2, where the grid
+            // stopped well short of the card edge.
+            let cellWidth = max((gridWidth - spacing * CGFloat(count - 1)) / CGFloat(count), 2)
+            let cellHeight = max(min((geometry.size.height - spacing * 6) / 7, cellWidth), 2)
+            let radius = min(cellWidth, cellHeight) * 0.22
 
             HStack(spacing: spacing) {
+                VStack(spacing: spacing) {
+                    ForEach(Array(weekdayInitials.enumerated()), id: \.offset) { _, initial in
+                        Text(initial)
+                            .font(.system(size: 7, weight: .medium))
+                            .foregroundStyle(.tertiary)
+                            .frame(width: labelWidth, height: cellHeight)
+                    }
+                }
+
                 ForEach(Array(columns.enumerated()), id: \.offset) { _, week in
                     VStack(spacing: spacing) {
                         ForEach(Array(week.enumerated()), id: \.offset) { _, trained in
-                            RoundedRectangle(cornerRadius: cell * 0.22, style: .continuous)
+                            RoundedRectangle(cornerRadius: radius, style: .continuous)
                                 .fill(trained ? Color.accentColor : Color.primary.opacity(0.13))
-                                .frame(width: cell, height: cell)
+                                .frame(width: cellWidth, height: cellHeight)
                         }
                     }
                 }

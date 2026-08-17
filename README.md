@@ -8,7 +8,7 @@ Full product spec: [`PRD.md`](PRD.md) · Session history and current blockers: [
 
 ## Status
 
-**V1 feature-complete.** Every milestone M1–M11 is built and verified on a physical device via TestFlight internal testing.
+**V1 feature-complete.** Every milestone M1–M11 is built. Drop sets and swipe-to-delete were unreachable at runtime for the whole of V1 and were fixed on 2026-08-18, verified end to end against the SQLite store.
 
 | Milestone | State |
 |---|---|
@@ -26,7 +26,11 @@ Full product spec: [`PRD.md`](PRD.md) · Session history and current blockers: [
 
 Beyond the milestone list: home-screen widgets, cardio-console OCR, split templates, a plate calculator, and kg/lb units.
 
-Two things are deliberately outstanding rather than unfinished — artwork, which needs files rather than code ([`docs/ARTWORK.md`](docs/ARTWORK.md)), and Apple Calendar sync, which is an open product decision. Both are tracked in the [session log](docs/SESSION-LOG.md).
+Row gestures do not use `.swipeActions` — SwiftUI honours it on `List` rows only, and this screen is a `ScrollView` of cards. [`SwipeActionRow`](Rerack/App/SwipeActionRow.swift) reimplements the interaction on a `UIPanGestureRecognizer` so a swipe begun on a text field still works.
+
+A batch of UX fixes from a full-workout test landed alongside it, and several more are still open — see the [session log](docs/SESSION-LOG.md) for the exact split.
+
+Two further things are deliberately outstanding rather than unfinished — artwork, which needs files rather than code ([`docs/ARTWORK.md`](docs/ARTWORK.md)), and Apple Calendar sync, which is an open product decision. Both are tracked in the [session log](docs/SESSION-LOG.md).
 
 See the [Build Order](PRD.md#16-build-order--testflight-expectations) in the PRD for what each milestone covers.
 

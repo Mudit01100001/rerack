@@ -16,6 +16,13 @@ struct RerackApp: App {
     var body: some Scene {
         WindowGroup {
             RootTabView()
+                .task {
+                    // A cold Taptic Engine lands the first tap of a session
+                    // tens of milliseconds late, which made the very first
+                    // set of a workout feel unresponsive while every later
+                    // one felt fine.
+                    Haptics.warmUp()
+                }
         }
         .modelContainer(container)
     }
