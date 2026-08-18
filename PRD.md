@@ -1421,11 +1421,42 @@ Three conclusions, in order of importance:
 2. **Confidence is not a usable filter.** The single worst misread in the whole set — `65:00` → `0959` — came back at 1.00. There is no threshold that keeps the good reads and drops the bad ones.
 3. **The label geometry that *does* work is useless without step 1.** Labels read perfectly every time, and their position relative to values is not even consistent between machines: the Cosco puts labels to the **left** of values, the Life Fitness puts them **below**. Anchoring crops to labels was the plan; it fails because the crop contents are unreadable regardless of where the crop is.
 
-**What this rules out.** `DataScannerViewController` (VisionKit's Live Text camera) uses the same recogniser and fails the same way. Foundation Models is text-only — it can turn recognised strings into structured fields but cannot look at pixels, so feeding it `0959` yields a confidently structured wrong answer. Neither is a path forward.
+**What this rules out.** `DataScannerViewController` (VisionKit's Live Text camera) uses the same recogniser and fails the same way.
 
-**What replaced it.** Nothing. The four numeric fields are typed. §21.2's photo attachment stays as a plain record of the session, with no claim that anything is read from it.
+**Corrected 2026-08-18, same day.** This section originally also ruled out Foundation Models as "text-only — cannot look at pixels." **That is out of date.** At WWDC 2026 Apple rebuilt the on-device model with vision capability: images attach directly to a prompt via `Attachment(image)`, run on-device, and accept any size or aspect ratio. Apple also shipped a Vision-backed `OCRTool` and `BarcodeReaderTool` the model can call. See §22.4.
+
+**What replaced it.** Nothing, for now. The four numeric fields are typed. §21.2's photo attachment stays as a plain record of the session, with no claim that anything is read from it. Two live routes back to an automatic read are recorded in §22.4 — this section documents why *Vision's text recogniser* is not one of them, which remains true.
 
 **One trap worth keeping.** `sips` reported these photos as 4032×3024 while `NSImage`/`CGImage` loaded them as 3024×4032 — the files carry an orientation tag that AppKit applies and `sips` reports pre-rotation. Every crop computed from the "obvious" dimensions landed somewhere else entirely while looking perfectly reasonable. This is the same failure recorded in Session 2, and it cost two rounds here before the crop was rendered and *looked at*.
+
+### 22.4 Routes still open for reading a console — **research, nothing built**
+
+§22.1 establishes that Vision's *text recogniser* cannot read segmented displays. It does not establish that the feature is impossible, and an earlier draft of that section wrongly said so. Two routes remain.
+
+**Route A — a geometric segment decoder.** No machine learning. Seven-segment digits are not a typeface, they are a fixed code: seven bars in known positions, each on or off, ten valid patterns. Locate the display, correct perspective, binarise, find the digit cells, sample the seven positions, look the pattern up. The property that defeats Vision — no glyph continuity — is the property that makes this trivial. `ssocr` and similar tools have worked this way for years.
+
+*Evidence:* binarising the Life Fitness `TIME` field and printing it as a coarse 72×18 grid produced unmistakable digit structure — the first digit lights every bar except upper-right (`6`), the second is missing upper-right and lower-left (`5`). Vision read that same field as `0959`.
+
+*Not yet tested on the Cosco LCD.* The probe crop for it came back entirely black, so nothing about that machine has been established either way.
+
+**Route B — Foundation Models multimodal image input (WWDC 2026).** The on-device model now takes images:
+
+```swift
+let response = try await session.respond {
+    "Read the numbers off this treadmill console."
+    Attachment(image)
+}
+```
+
+On-device, any size or aspect ratio, accepts `UIImage`/`CGImage`/`CIImage`/pixel buffers.
+
+*Two caveats that decide whether this works:*
+1. **If the model delegates to the built-in `OCRTool`, it fails exactly as §22.1 measured** — that tool is Vision-backed. The win only exists if the model reads the display natively rather than calling the tool.
+2. **A vision model will produce a confident plausible number too.** Different mechanism, identical failure shape to the `65:00` → `0959` case. §22.1's never-auto-submit rule survives whichever route is taken.
+
+*Blocked on tooling.* The SDK installed on the dev machine (Xcode 26.6 / iOS 26.5) ships `FoundationModels.framework` **without** `Attachment`, `OCRTool` or `BarcodeReaderTool` — its public interface is the text-only 2025 generation. Route B needs a newer Xcode. The project's deployment target is also iOS 17, so any use would need availability gating and a fallback.
+
+*Sources:* [Foundation Models — WWDC26](https://developer.apple.com/videos/play/wwdc2026/241/) · [Image understanding — WWDC26](https://developer.apple.com/videos/play/wwdc2026/237/) · [Apple Intelligence guide](https://developer.apple.com/wwdc26/guides/apple-intelligence/)
 
 ### 22.2 Weekly / monthly / yearly check-ins — the Foundation Models framework
 

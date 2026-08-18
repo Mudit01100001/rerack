@@ -100,9 +100,23 @@ Three photos arrived: two Cosco Fitness treadmills (backlit LCD, seven-segment) 
 
 The label geometry isn't even consistent: the Cosco puts labels **left** of values, the Life Fitness puts them **below**. That was going to be the hard part. It turned out to be irrelevant.
 
-`DataScannerViewController` uses the same recogniser. Foundation Models is text-only, so it would structure `0959` into a confident wrong answer. Neither is a path forward.
+`DataScannerViewController` uses the same recogniser, so it fails identically.
 
 **Removed:** `ConsoleScanSheet.swift`, `CardioConsoleScanner.swift`, the Scan Console button, and the "auto-reading the numbers off it isn't built yet" caption that had been contradicting the button six rows above it. The photo stays as a record; the four numbers are typed.
+
+### 🔴 Correction, same day: "no way ever" was wrong
+
+Two claims made above and in the commit message were overstated, and one was factually out of date.
+
+**Foundation Models is no longer text-only.** At WWDC 2026 — after this assistant's May 2026 knowledge cutoff — Apple rebuilt the on-device model with vision. Images attach straight into a prompt with `Attachment(image)`, run on-device, any size or aspect ratio. Apple also shipped a Vision-backed `OCRTool` and a `BarcodeReaderTool` the model can call. Saying it "cannot look at pixels" was true when learned and false by the time it was written down. **Check the current API before ruling a capability out.**
+
+**A geometric segment decoder was never tested and should have been.** Seven-segment digits are a fixed code — seven bars, ten valid patterns — so you sample the bar positions and look the pattern up. No ML. The property that defeats Vision is the property that makes this easy. Binarising the Life Fitness `TIME` field to a coarse grid showed unmistakable digit structure: `6` lights every bar but upper-right, `5` is missing upper-right and lower-left. Vision called that field `0959`.
+
+The same probe on the **Cosco returned an all-black crop**, so nothing has been established about that machine — an empty result was briefly misread as a negative one, which is the third coordinate mistake in this investigation.
+
+Both routes are written up in **PRD §22.4**. Route B is blocked on tooling: the installed SDK (Xcode 26.6 / iOS 26.5) ships `FoundationModels.framework` *without* `Attachment` or `OCRTool` — it's the text-only 2025 generation — and the project deploys to iOS 17, so it would need availability gating and a fallback.
+
+**What stands unchanged:** Vision's text recogniser cannot read these displays, and its confidence score is worthless as a filter (`65:00` → `0959` at 1.00). Removing the scanner was still right. "Vision can't do this" was the measurement; "this can't be done" was an unearned leap from it.
 
 **The orientation trap bit again.** `sips` reported the photos as 4032×3024 while `NSImage` loaded them as 3024×4032 — an orientation tag AppKit applies and `sips` reports pre-rotation. Two rounds of crops landed in the wrong place while looking entirely reasonable, and were only caught by rendering the crop and looking at it. Same failure as Session 2's `scaledToFit` letterbox.
 

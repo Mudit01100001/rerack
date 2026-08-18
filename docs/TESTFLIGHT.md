@@ -92,6 +92,26 @@ Processing on Apple's side takes ~5–15 minutes. You'll get an email when it's 
 
 ---
 
+## Fastest path: straight to your phone, no TestFlight
+
+For trying a build *yourself*, skip TestFlight entirely. It's ~2 minutes versus ~20, and it needs no version bump, no upload and no processing wait.
+
+1. Plug the iPhone in (or pair it over Wi-Fi: **Xcode → Window → Devices and Simulators** → tick *Connect via network* once)
+2. Unlock the phone and tap **Trust** if asked
+3. ```bash
+   cd "/Users/mudit/Developer/iOS APPS/01. Weight Tracking" && xcodegen generate && open Rerack.xcodeproj
+   ```
+4. In the destination dropdown at the top, pick **your iPhone** (not a simulator)
+5. **⌘R**
+
+First run on a given device shows *"Untrusted Developer"* — on the phone go **Settings → General → VPN & Device Management → your Apple ID → Trust**, then ⌘R again.
+
+**Use TestFlight instead when:** you want the build to survive without the Mac (a direct install from a free account expires in 7 days; with your paid membership it's a year), or you want to hand it to somebody else.
+
+**Haptics and Live Activities only exist here.** The Simulator has no Taptic Engine and no real Lock Screen, so anything touching either has to be checked on the device.
+
+---
+
 ## For subsequent builds
 
 Only Steps 5 and 6. But bump the build number first or the upload is rejected as a duplicate:
