@@ -92,9 +92,11 @@ Processing on Apple's side takes ~5–15 minutes. You'll get an email when it's 
 
 ---
 
-## Fastest path: straight to your phone, no TestFlight
+## Which route to use
 
-For trying a build *yourself*, skip TestFlight entirely. It's ~2 minutes versus ~20, and it needs no version bump, no upload and no processing wait.
+**TestFlight is the default.** Archive, upload, and the build arrives on the phone as a notification you tap to update — no Mac in the room, no cable, and it stays installed for a year. That matters because most real testing of this app happens *in a gym*, and the two things that can only be checked on device — haptics and the Lock Screen Live Activity — are exactly the things you check mid-workout.
+
+**Direct install is for desk iteration only.** ~2 minutes instead of ~20, no version bump and no processing wait, but the phone has to be plugged into this Mac and you have to re-run from Xcode for every change. Reach for it when you're fixing something and re-checking it every few minutes; not when you're taking the app to the gym.
 
 1. Plug the iPhone in (or pair it over Wi-Fi: **Xcode → Window → Devices and Simulators** → tick *Connect via network* once)
 2. Unlock the phone and tap **Trust** if asked
@@ -106,9 +108,7 @@ For trying a build *yourself*, skip TestFlight entirely. It's ~2 minutes versus 
 
 First run on a given device shows *"Untrusted Developer"* — on the phone go **Settings → General → VPN & Device Management → your Apple ID → Trust**, then ⌘R again.
 
-**Use TestFlight instead when:** you want the build to survive without the Mac (a direct install from a free account expires in 7 days; with your paid membership it's a year), or you want to hand it to somebody else.
-
-**Haptics and Live Activities only exist here.** The Simulator has no Taptic Engine and no real Lock Screen, so anything touching either has to be checked on the device.
+**Haptics and Live Activities only exist on a real device.** The Simulator has no Taptic Engine and no real Lock Screen, so anything touching either has to be checked on hardware — by either route.
 
 ---
 
