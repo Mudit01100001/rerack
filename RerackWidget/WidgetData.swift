@@ -19,6 +19,23 @@ struct WidgetSnapshot {
     /// "resume" prompt instead of offering to start a second one (§6).
     let hasLiveWorkout: Bool
     let liveWorkoutTitle: String?
+    /// Item 13: enough to render the current set and tick it from the home
+    /// screen. Widgets cannot scroll at any family, so the live state can't
+    /// be a list — it has to be *the one thing you'd do next*.
+    let liveSet: LiveSet?
+
+    struct LiveSet {
+        let workoutID: UUID
+        let workoutExerciseID: UUID
+        let exerciseName: String
+        let positionLabel: String
+        let setIndex: Int
+        let weightKg: Double
+        let reps: Int
+        /// M6 §5.3: with no resolved payload a tick would write numbers the
+        /// user never saw. The widget shows Open instead.
+        let isPayloadKnown: Bool
+    }
 
     let currentStreakWeeks: Int
     let workoutsThisWeek: Int
@@ -40,6 +57,7 @@ struct WidgetSnapshot {
         ],
         hasLiveWorkout: false,
         liveWorkoutTitle: nil,
+        liveSet: nil,
         currentStreakWeeks: 3,
         workoutsThisWeek: 2,
         totalWorkouts: 42,
@@ -86,14 +104,37 @@ enum WidgetDataSource {
                 )
             }
 
-        let live = workouts.first { $0.endedAt == nil }
+        // A workout is only "live" if it also started recently.
+        //
+        // Minimising parks a session and never ends it, so one abandoned
+        // workout left `endedAt == nil` forever and the widget claimed a
+        // session was in progress for days. Twelve hours is well past any
+        // real session and well short of "yesterday's forgotten tab."
+        let liveCutoff = Date().addingTimeInterval(-12 * 3600)
+        let live = workouts.first { $0.endedAt == nil && $0.startedAt > liveCutoff }
         let finished = workouts.filter { $0.endedAt != nil }
+
+        let liveSet: WidgetSnapshot.LiveSet? = live.flatMap { workout in
+            let ghosts = WorkoutGhosts.provider(for: workout, context: context)
+            guard let pointer = WorkoutEngine.nextSet(in: workout, ghostsProvider: ghosts) else { return nil }
+            return WidgetSnapshot.LiveSet(
+                workoutID: workout.id,
+                workoutExerciseID: pointer.workoutExerciseID,
+                exerciseName: pointer.exerciseName,
+                positionLabel: pointer.positionLabel,
+                setIndex: pointer.setIndex,
+                weightKg: pointer.weightKg,
+                reps: pointer.reps,
+                isPayloadKnown: pointer.isPayloadKnown
+            )
+        }
 
         return WidgetSnapshot(
             splitName: splitName,
             days: Array(days),
             hasLiveWorkout: live != nil,
             liveWorkoutTitle: live?.title,
+            liveSet: liveSet,
             currentStreakWeeks: ProfileStats.streaks(from: finished).current,
             workoutsThisWeek: workoutsThisWeek(finished),
             totalWorkouts: finished.count,

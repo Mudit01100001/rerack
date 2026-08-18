@@ -305,6 +305,8 @@ A *ghost set* is a row pre-populated with values from your last performance of t
 
 The **Previous** column and the ghost values come from the same source, so they always agree.
 
+> ⚠️ **Ghost pre-selection was never built and was fixed on 2026-08-18.** Tapping a ghost and typing appended instead of replacing — `0` + `60` gave `600`, and the set logged at 600 kg. The field now clears on focus and restores the suggestion if you leave without typing.
+
 **Interactions:**
 
 | Gesture | Result |

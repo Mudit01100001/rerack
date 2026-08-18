@@ -1,5 +1,6 @@
 import WidgetKit
 import SwiftUI
+import AppIntents
 
 // MARK: - Timeline
 
@@ -80,24 +81,13 @@ private struct SelectorView: View {
 
             if snapshot.hasLiveWorkout {
                 // §6: you can't start a second workout, so don't offer to.
-                Link(destination: WorkoutDeepLink.active) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "figure.strengthtraining.traditional")
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text("In progress").font(.caption2).opacity(0.85)
-                            Text(snapshot.liveWorkoutTitle ?? "Workout")
-                                .font(.subheadline.weight(.semibold))
-                                .lineLimit(1)
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right").font(.caption2)
-                    }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 9)
-                    .frame(maxWidth: .infinity)
-                    .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                }
+                //
+                // This used to be a single "In progress" banner with the rest
+                // of the family left empty — a large widget's worth of space
+                // spent saying one sentence. It now carries the next set and
+                // a tick, which is the only thing you actually want from a
+                // home screen mid-workout.
+                liveSection
                 Spacer(minLength: 0)
             } else if visibleDays.isEmpty {
                 Link(destination: WorkoutDeepLink.workoutTab) {
@@ -118,6 +108,79 @@ private struct SelectorView: View {
                 }
                 Spacer(minLength: 0)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var liveSection: some View {
+        Link(destination: WorkoutDeepLink.active) {
+            HStack(spacing: 8) {
+                Image(systemName: "figure.strengthtraining.traditional")
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("In progress").font(.caption2).opacity(0.85)
+                    Text(snapshot.liveWorkoutTitle ?? "Workout")
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").font(.caption2)
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
+            .frame(maxWidth: .infinity)
+            .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+
+        if let live = snapshot.liveSet {
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(live.exerciseName)
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                    Text(live.isPayloadKnown
+                         ? "\(live.positionLabel) · \(Weight.format(kg: live.weightKg, in: .kg, includeUnit: true)) × \(live.reps)"
+                         : "\(live.positionLabel) · no target yet")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+
+                if live.isPayloadKnown {
+                    // Same intent the Live Activity's tick uses, so logging
+                    // from the home screen and from the Lock Screen take one
+                    // code path (M6 §6.1) — and neither opens the app.
+                    Button(intent: LogSetIntent(
+                        workoutID: live.workoutID,
+                        workoutExerciseID: live.workoutExerciseID,
+                        setIndex: live.setIndex,
+                        weightKg: live.weightKg,
+                        reps: live.reps
+                    )) {
+                        Image(systemName: "checkmark")
+                            .font(.footnote.weight(.bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 34, height: 34)
+                            .background(Color.green, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    // §5.3: a tick whose numbers you can't see would write
+                    // something you never agreed to. Open the app instead.
+                    Link(destination: WorkoutDeepLink.active) {
+                        Text("Open")
+                            .font(.caption2.weight(.semibold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .background(.quaternary, in: Capsule())
+                    }
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
         }
     }
 

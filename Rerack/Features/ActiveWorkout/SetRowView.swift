@@ -32,6 +32,19 @@ struct SetRowView: View {
     @State private var weightText = ""
     @State private var repsText = ""
     @State private var hasEdited = false
+    /// PRD §7.3: "Ghost becomes editable, pre-selected so typing replaces it."
+    /// It didn't — tapping a ghost of `0` and typing `60` produced `600`, and
+    /// the set logged at 600 kg with a straight face. SwiftUI has no
+    /// select-all for `TextField`, so the field clears on focus instead and
+    /// restores the ghost if you leave without typing. The value is never
+    /// lost: the PREVIOUS column still shows it either way.
+    @FocusState private var focusedField: Field?
+    /// Which fields the user has actually typed into. Tracked per field
+    /// because clearing is per field: editing the weight must not stop the
+    /// reps ghost from clearing when you move to it.
+    @State private var editedFields: Set<Field> = []
+
+    private enum Field: Hashable { case weight, reps }
 
     private var isCompleted: Bool { existingSet?.isCompleted == true }
 
@@ -138,6 +151,7 @@ struct SetRowView: View {
                 placeholder: unit.abbreviation,
                 width: 58,
                 keyboard: .decimalPad,
+                field: .weight,
                 // One plate pair, expressed in whatever unit is on screen —
                 // scrubbing in 2.5 lb steps would be uselessly fine.
                 scrubStep: unit == .kg ? 2.5 : 5,
@@ -149,6 +163,7 @@ struct SetRowView: View {
                 placeholder: "reps",
                 width: 48,
                 keyboard: .numberPad,
+                field: .reps,
                 scrubStep: 1,
                 scrubRange: 0...100,
                 scrubsAsInteger: true
@@ -203,6 +218,7 @@ struct SetRowView: View {
         placeholder: String,
         width: CGFloat,
         keyboard: UIKeyboardType,
+        field: Field,
         scrubStep: Double,
         scrubRange: ClosedRange<Double>,
         scrubsAsInteger: Bool
@@ -221,14 +237,40 @@ struct SetRowView: View {
                 RoundedRectangle(cornerRadius: DS.Radius.small, style: .continuous)
                     .strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.5)
             )
-            .onChange(of: text.wrappedValue) { _, _ in hasEdited = true }
+            .focused($focusedField, equals: field)
+            .onChange(of: focusedField) { previous, current in
+                if current == field, !isCompleted, !editedFields.contains(field) {
+                    text.wrappedValue = ""
+                } else if previous == field, text.wrappedValue.isEmpty, !editedFields.contains(field) {
+                    // Focused, typed nothing, left — put the suggestion back.
+                    populate()
+                }
+            }
+            // "Edited" is decided by *focus*, not by the text changing.
+            // `populate()` writes into these bindings on appear, on unit
+            // change and on every row identity change, and each of those
+            // fired the old unconditional handler — so `hasEdited` was
+            // already true before the field was ever touched, which is why
+            // the clear-on-focus above never ran and typing 60 over a ghost
+            // 0 logged 600.
+            .onChange(of: text.wrappedValue) { _, newValue in
+                guard focusedField == field, !newValue.isEmpty else { return }
+                editedFields.insert(field)
+                hasEdited = true
+            }
             // §7.2: press-and-hold, then drag up or down to nudge the value
             // without summoning the keyboard.
             .numberScrub(
                 text: text,
                 step: scrubStep,
                 range: scrubRange,
-                formatsAsInteger: scrubsAsInteger
+                formatsAsInteger: scrubsAsInteger,
+                onCommit: {
+                    // Scrubbing never focuses the field, so it has to declare
+                    // the edit itself.
+                    editedFields.insert(field)
+                    hasEdited = true
+                }
             )
             // Without this VoiceOver reads a bare number with no idea which
             // column it came from.
@@ -237,6 +279,7 @@ struct SetRowView: View {
     }
 
     private func populate() {
+        if focusedField == nil { editedFields.removeAll() }
         if let existingSet {
             weightText = Weight.format(kg: existingSet.addedWeightKg, in: unit)
             // §7.9: reps genuinely vary set-to-set on a drop, so an un-ticked

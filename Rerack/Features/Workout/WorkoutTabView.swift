@@ -21,6 +21,9 @@ struct WorkoutTabView: View {
     @State private var newRoutine: Routine?
     @State private var showingTemplates = false
     @State private var showingNewSplit = false
+    /// Presented from the `List` rather than from the rows — see
+    /// `RoutineListView.destination`.
+    @State private var routineDestination: RoutineDestination?
 
     private var profile: UserProfile? { profiles.first }
 
@@ -50,7 +53,7 @@ struct WorkoutTabView: View {
 
                 if !folders.isEmpty, let selectedSplit {
                     Section {
-                        RoutineListView(folderName: selectedSplit)
+                        RoutineListView(folderName: selectedSplit, destination: $routineDestination)
                     } header: {
                         splitHeader(selectedSplit)
                     }
@@ -58,7 +61,7 @@ struct WorkoutTabView: View {
 
                 if !loose.isEmpty {
                     Section("Not in a split") {
-                        RoutineListView(folderName: nil)
+                        RoutineListView(folderName: nil, destination: $routineDestination)
                     }
                 }
 
@@ -86,6 +89,20 @@ struct WorkoutTabView: View {
             .navigationTitle("Workout")
             .sheet(item: $newRoutine) { routine in
                 RoutineEditorView(routine: routine)
+            }
+            .sheet(item: $routineDestination) { destination in
+                switch destination {
+                case .edit(let routine):
+                    RoutineEditorView(routine: routine)
+                case .preview(let routine):
+                    RoutinePreviewSheet(
+                        routine: routine,
+                        isStartDisabled: coordinator.liveWorkout != nil,
+                        onStart: {
+                            RoutineStarter.start(routine, coordinator: coordinator, context: modelContext)
+                        }
+                    )
+                }
             }
             .sheet(isPresented: $showingTemplates) {
                 NavigationStack { TemplateLibraryView() }

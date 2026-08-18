@@ -1,6 +1,40 @@
 import SwiftUI
 import SwiftData
 
+/// What a routine row wants to open. Lives at file scope because the sheet is
+/// presented by the enclosing `List`, not by the rows themselves.
+enum RoutineDestination: Identifiable {
+    case edit(Routine)
+    case preview(Routine)
+
+    var id: String {
+        switch self {
+        case .edit(let routine): "edit-\(routine.id)"
+        case .preview(let routine): "preview-\(routine.id)"
+        }
+    }
+
+    var routine: Routine {
+        switch self {
+        case .edit(let routine), .preview(let routine): routine
+        }
+    }
+}
+
+/// Shared by `RoutineListView` and `WorkoutTabView`'s sheet, so starting a
+/// routine from a row and from the preview take exactly the same path.
+@MainActor
+enum RoutineStarter {
+    static func start(_ routine: Routine, coordinator: ActiveWorkoutCoordinator, context: ModelContext) {
+        guard coordinator.liveWorkout == nil else { return }
+        guard !(routine.exercises ?? []).isEmpty else { return }
+        let workout = WorkoutStarter.start(routine: routine, context: context)
+        routine.lastPerformedAt = Date()
+        try? context.save()
+        coordinator.present(workout)
+    }
+}
+
 /// PRD §9.3. Grouped by folder when folders exist; a flat "No Folder" group
 /// otherwise. Meant to be embedded directly inside the `List` in
 /// `WorkoutTabView` — its body is `Section`s, not a standalone scroll view.
@@ -14,7 +48,13 @@ struct RoutineListView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(ActiveWorkoutCoordinator.self) private var coordinator
 
-    @State private var editingRoutine: Routine?
+    /// Owned by `WorkoutTabView` and presented from the enclosing `List`.
+    ///
+    /// A `.sheet` attached here never presented: this view's body *is* the
+    /// `ForEach` inside someone else's `List`, and a lazily-built row is not
+    /// a stable enough host to keep a sheet alive. The button fired and the
+    /// state changed; nothing appeared.
+    @Binding var destination: RoutineDestination?
 
     private var visible: [Routine] {
         routines
@@ -28,7 +68,8 @@ struct RoutineListView: View {
                 routine: routine,
                 isStartDisabled: coordinator.liveWorkout != nil,
                 onStart: { start(routine) },
-                onEdit: { editingRoutine = routine },
+                onPreview: { destination = .preview(routine) },
+                onEdit: { destination = .edit(routine) },
                 onDuplicate: { duplicate(routine) },
                 onDelete: { modelContext.delete(routine) }
             )
@@ -53,9 +94,7 @@ struct RoutineListView: View {
             }
             try? modelContext.save()
         }
-        .sheet(item: $editingRoutine) { routine in
-            RoutineEditorView(routine: routine)
-        }
+
     }
 
     private func move(in group: [Routine], from offsets: IndexSet, to destination: Int) {
@@ -74,12 +113,7 @@ struct RoutineListView: View {
     /// hands off to the coordinator. Guarded against starting with nothing
     /// to do or while another workout is already live (§6).
     private func start(_ routine: Routine) {
-        guard coordinator.liveWorkout == nil else { return }
-        guard !(routine.exercises ?? []).isEmpty else { return }
-        let workout = WorkoutStarter.start(routine: routine, context: modelContext)
-        routine.lastPerformedAt = Date()
-        try? modelContext.save()
-        coordinator.present(workout)
+        RoutineStarter.start(routine, coordinator: coordinator, context: modelContext)
     }
 
     /// PRD §9.3 long-press menu includes Duplicate. Deep-copies the

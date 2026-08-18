@@ -45,6 +45,9 @@ struct ActiveWorkoutView: View {
     /// counts as "at the top" — demanding exactly zero makes the gesture feel
     /// broken after a rubber-band bounce.
     @State private var isScrolledToTop = true
+    /// Item 11: set when the session's exercise list no longer matches the
+    /// template it started from, so the user gets to say what that means.
+    @State private var showingDivergencePrompt = false
     /// Only a drag beginning in the upper third of the screen can dismiss.
     private var dismissZoneHeight: CGFloat { UIScreen.main.bounds.height / 3 }
     @State private var bannerDismissTask: Task<Void, Never>?
@@ -133,9 +136,9 @@ struct ActiveWorkoutView: View {
                                 Haptics.play(.timerSkipped)
                                 clearRest()
                             },
-                            onAdjust: { delta in
+                            onSetRemaining: { seconds in
                                 Haptics.play(.timerAdjusted)
-                                adjustRest(by: delta, for: restingExercise)
+                                setRest(remainingSeconds: seconds, for: restingExercise)
                             }
                         )
                         .padding(.horizontal)
@@ -242,6 +245,23 @@ struct ActiveWorkoutView: View {
             // tooltip rather than a decision and put a destructive action
             // under an easily-mis-tapped popover. An alert is centred, modal,
             // and gives Cancel equal weight.
+            // Item 11. Two choices, no third "update the template" — the
+            // user was explicit that saving a *new* workout and keeping the
+            // *old* one are the whole decision, and that carrying weights
+            // between sessions is a separate concept handled by ghost sets
+            // (§7.3), not by this prompt.
+            .alert("This session doesn't match the plan", isPresented: $showingDivergencePrompt) {
+                Button("Save as New Workout") {
+                    saveAsNewWorkout()
+                    finish()
+                }
+                Button("Keep the Old Workout") {
+                    finish()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("You changed the exercises in \(workout.title). Save what you did as a new workout, or leave the original as it is?")
+            }
             .alert("Discard this workout?", isPresented: $showingDiscardConfirm) {
                 Button("Cancel", role: .cancel) {}
                 Button("Discard", role: .destructive) {
@@ -399,20 +419,53 @@ struct ActiveWorkoutView: View {
 
     // MARK: - Header
 
+    /// Item 10: while resting there were two live clocks on screen — this
+    /// one counting up and the rest bar counting down — drawn in similar
+    /// weight with nothing saying which was which. A glance couldn't answer
+    /// "am I resting or working," which is the only question this screen has
+    /// to answer instantly.
+    ///
+    /// The session clock now sits in a labelled pill and steps back while
+    /// rest is running, leaving the countdown as the single loud number.
     private var statsHeader: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            TimelineView(.periodic(from: workout.startedAt, by: 1)) { context in
-                Text(formattedDuration(context.date.timeIntervalSince(workout.startedAt)))
-                    .font(.title2.monospacedDigit())
+        VStack(alignment: .leading, spacing: DS.Space.xs) {
+            HStack(spacing: DS.Space.xs) {
+                TimelineView(.periodic(from: workout.startedAt, by: 1)) { context in
+                    HStack(spacing: DS.Space.xxs) {
+                        Image(systemName: "stopwatch")
+                            .dsFont(DS.TypeScale.caption2, relativeTo: .caption2, weight: .semibold)
+                        Text(formattedDuration(context.date.timeIntervalSince(workout.startedAt)))
+                            .dsFont(
+                                isResting ? DS.TypeScale.caption : DS.TypeScale.heading,
+                                relativeTo: isResting ? .subheadline : .title2,
+                                weight: .semibold,
+                                design: .rounded
+                            )
+                            .monospacedDigit()
+                    }
+                    .foregroundStyle(isResting ? .secondary : .primary)
+                    .padding(.horizontal, DS.Space.sm)
+                    .padding(.vertical, isResting ? 5 : DS.Space.xxs + 2)
+                    .background(Color.primary.opacity(0.06), in: Capsule())
+                    .accessibilityLabel("Session time")
+                }
+                .animation(.snappy(duration: 0.25), value: isResting)
+
+                Spacer(minLength: 0)
             }
-            HStack(spacing: 12) {
+
+            HStack(spacing: DS.Space.sm) {
                 Label(Weight.formatTotal(kg: totalVolume, in: unit), systemImage: "scalemass")
                 Label("\(totalSets) sets", systemImage: "checkmark.circle")
             }
-            .font(.caption)
+            .dsFont(DS.TypeScale.caption, relativeTo: .caption)
             .foregroundStyle(.secondary)
         }
         .padding(.horizontal)
+    }
+
+    private var isResting: Bool {
+        workout.restEndsAt != nil && workout.restingExerciseID != nil
     }
 
     private var allCompletedSets: [SetLog] {
@@ -498,6 +551,20 @@ struct ActiveWorkoutView: View {
     private func adjustRest(by delta: Int, for workoutExercise: WorkoutExercise) {
         guard let current = workout.restEndsAt else { return }
         workout.restEndsAt = max(current.addingTimeInterval(TimeInterval(delta)), Date().addingTimeInterval(15))
+        rescheduleRestNotification(for: workoutExercise)
+    }
+
+    /// §7.5, item 9: the in-app control is a slider, so it sets the remaining
+    /// time outright. Zero is honoured — dragging the thumb to the left end
+    /// is a legitimate way to end rest, and clamping it to a 15s floor the
+    /// way `adjustRest` does would make the slider lie about its own range.
+    private func setRest(remainingSeconds: Int, for workoutExercise: WorkoutExercise) {
+        guard workout.restEndsAt != nil else { return }
+        if remainingSeconds <= 0 {
+            clearRest()
+            return
+        }
+        workout.restEndsAt = Date().addingTimeInterval(TimeInterval(remainingSeconds))
         rescheduleRestNotification(for: workoutExercise)
     }
 
@@ -766,9 +833,75 @@ struct ActiveWorkoutView: View {
     private func attemptFinish() {
         if totalSets == 0 {
             showingEmptyFinishConfirm = true
+        } else if hasDivergedFromTemplate {
+            showingDivergencePrompt = true
         } else {
             finish()
         }
+    }
+
+    /// Item 11: did this session end up doing different *exercises* than the
+    /// template called for?
+    ///
+    /// Compares the exercise list only — sets, reps and weights are expected
+    /// to differ every session and are the whole point of logging. Swapping,
+    /// adding or dropping a movement is the thing that means "this is a
+    /// different day now," and it is the only thing worth asking about.
+    private var hasDivergedFromTemplate: Bool {
+        guard let routine = workout.routine else { return false }
+        let planned = (routine.exercises ?? [])
+            .sorted { $0.orderIndex < $1.orderIndex }
+            .compactMap { $0.exercise?.id }
+        let performed = sortedExercises.compactMap { $0.exercise?.id }
+        return planned != performed
+    }
+
+    /// "Save as new workout": the session's exercise list becomes its own
+    /// entry in the library, alongside the original. Deliberately a *copy*
+    /// rather than an edit — the template you diverged from is often still
+    /// the one you want next week, and silently rewriting it would lose a
+    /// plan the user never asked to change.
+    private func saveAsNewWorkout() {
+        let source = workout.routine
+        let copy = Routine(
+            name: "\(workout.title) (new)",
+            notes: source?.notes,
+            folder: source?.folder,
+            orderIndex: (try? modelContext.fetch(FetchDescriptor<Routine>()))?.count ?? 0
+        )
+        copy.trackAsProgress = source?.trackAsProgress ?? true
+        copy.updateValuesOnFinish = source?.updateValuesOnFinish ?? true
+        modelContext.insert(copy)
+
+        for (index, workoutExercise) in sortedExercises.enumerated() {
+            guard let exercise = workoutExercise.exercise else { continue }
+            let routineExercise = RoutineExercise(
+                orderIndex: index,
+                exercise: exercise,
+                supersetGroup: workoutExercise.supersetGroup
+            )
+            routineExercise.restSecondsOverride = workoutExercise.restSecondsUsed
+            modelContext.insert(routineExercise)
+            routineExercise.routine = copy
+
+            // Seed the new plan from what was actually performed — top-level
+            // sets only, since a drop chain is a decision made in the moment
+            // rather than a target to aim at next time (§7.9).
+            let performed = (workoutExercise.sets ?? [])
+                .filter { $0.isCompleted && $0.parentSetID == nil }
+                .sorted { $0.orderIndex < $1.orderIndex }
+            for (position, setLog) in performed.enumerated() {
+                let template = RoutineSetTemplate(
+                    orderIndex: position,
+                    targetWeightKg: setLog.addedWeightKg,
+                    targetReps: setLog.reps,
+                    setType: .normal
+                )
+                modelContext.insert(template)
+                template.routineExercise = routineExercise
+            }
+        }
+        try? modelContext.save()
     }
 
     private func finish() {

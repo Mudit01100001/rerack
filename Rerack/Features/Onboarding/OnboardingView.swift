@@ -22,6 +22,11 @@ struct OnboardingView: View {
 
     private enum HealthDecision { case undecided, connected, declined }
 
+    /// Derived rather than written as a literal in two places: the footer
+    /// used a hardcoded `3`, so inserting the gestures screen would have left
+    /// the last page saying "Continue" and going nowhere.
+    private static let lastPage = 4
+
     private var profile: UserProfile? { profiles.first }
 
     var body: some View {
@@ -29,8 +34,9 @@ struct OnboardingView: View {
             TabView(selection: $page) {
                 welcome.tag(0)
                 basics.tag(1)
-                health.tag(2)
-                firstWorkout.tag(3)
+                gestures.tag(2)
+                health.tag(3)
+                firstWorkout.tag(4)
             }
             .tabViewStyle(.page(indexDisplayMode: .always))
             .animation(.easeInOut, value: page)
@@ -139,6 +145,37 @@ struct OnboardingView: View {
         }
     }
 
+    /// A swipe nobody knows about is the same as no swipe.
+    ///
+    /// Set rows carry three gestures that have no visible affordance —
+    /// they're the fastest way to work through a session and completely
+    /// undiscoverable, which is the one thing onboarding is genuinely for.
+    private var gestures: some View {
+        page(
+            icon: "hand.draw",
+            title: "Rows respond to your thumb",
+            body: "Logging a session is mostly these three moves."
+        ) {
+            VStack(alignment: .leading, spacing: DS.Space.sm) {
+                bullet(
+                    "arrow.left",
+                    "Swipe left on a set",
+                    "Delete it, or chain a drop set onto it. Both are in the ··· menu too."
+                )
+                bullet(
+                    "arrow.right",
+                    "Swipe right on a set",
+                    "Adds another set carrying the same weight and reps."
+                )
+                bullet(
+                    "hand.tap",
+                    "Hold a weight or reps field",
+                    "Then drag up or down to change the number without the keyboard."
+                )
+            }
+        }
+    }
+
     private var firstWorkout: some View {
         page(
             icon: "figure.strengthtraining.traditional",
@@ -202,13 +239,13 @@ struct OnboardingView: View {
     private var footer: some View {
         VStack(spacing: DS.Space.xs) {
             Button {
-                if page < 3 {
+                if page < Self.lastPage {
                     withAnimation { page += 1 }
                 } else {
                     finish()
                 }
             } label: {
-                Text(page < 3 ? "Continue" : "Start Training")
+                Text(page < Self.lastPage ? "Continue" : "Start Training")
                     .dsFont(DS.TypeScale.body, relativeTo: .headline, weight: .semibold)
                     .frame(maxWidth: .infinity, minHeight: 50)
             }

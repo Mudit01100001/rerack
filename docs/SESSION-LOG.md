@@ -53,17 +53,44 @@ Generators are cached and pre-warmed at launch: a cold Taptic Engine lands the f
 
 **Item 5's progress bar was a real inversion.** `ProgressView(countsDown: false)` filled left-to-right, so a *full* bar meant rest was **over** — the opposite of the intuition for a countdown.
 
+### Second pass — the rest of the list
+
+| # | Item | State |
+|---|---|---|
+| 1 | Tapping a tile opens a preview panel with its own Start Workout | ✅ verified |
+| 9 | Slider replaces ±15s in-app; Live Activity keeps its buttons | ✅ verified |
+| 10 | Session clock moved into a labelled pill and shrinks during rest | ✅ verified |
+| 11 | "Save as New Workout" / "Keep the Old Workout" on a diverged template | ✅ verified against the store |
+| 13 | Widget shows the current set with a tick, plus a staleness guard | ✅ built |
+| — | Onboarding gained a gestures slide | ✅ built |
+
+**Item 1 took three attempts, and each failure was a different SwiftUI trap.**
+
+1. Moving the row's `.onTapGesture` to `onPreview` changed nothing. A `List` row containing exactly **one** `Button` routes a tap anywhere in the row to that button — which is *why* the tile and Start Workout did the same thing in the first place. The tap never reached the gesture.
+2. Making it an explicit second `Button` fixed the tap but still presented nothing: two `.sheet(item:)` modifiers on the same view silently fight, and only one wins.
+3. Consolidating to one sheet *still* presented nothing, because `RoutineListView`'s body **is** the `ForEach` inside someone else's `List`. A lazily-built row is not a stable enough host to keep a sheet alive. The sheet now lives on `WorkoutTabView`'s `List`, with the destination passed up as a binding.
+
+**Item 10** also revealed why the state was ambiguous: two live clocks, one counting up and one down, drawn at similar weight with nothing saying which was which.
+
+### 🔴 A real data bug found while verifying item 9
+
+Typing `60` over a ghost `0` produced **600**, and the set logged at 600 kg — a 3,600 kg session volume from one bench press.
+
+PRD §7.3 says a ghost is "pre-selected so typing replaces it." It never was. The cause is subtle and worth remembering: `hasEdited` was set by an unconditional `.onChange(of: text)`, and `populate()` *writes into that same binding* on appear, on unit change and on every row identity change. So `hasEdited` was already `true` before the field was ever touched, which suppressed the clear-on-focus and left the caret sitting in front of the existing digits.
+
+"Edited" is now decided by **focus**, not by the text changing, and is tracked per field so editing the weight doesn't stop the reps ghost from clearing. Verified: field clears to its placeholder on focus, typing `60` yields `60`.
+
+This is the fourth bug on this project where the build was green and the screen looked right.
+
 ### 🔴 Not done — carried to next session
 
-Honest list. These were asked for in the same pass and are not built:
+**Cardio console rebuild.** Remove the draw-a-box flow, remove the contradictory "Attach a photo / auto-reading isn't built yet" caption ([`AddCardioSessionView.swift:93`](../Rerack/Features/Cardio/AddCardioSessionView.swift), now false), and replace with label-proximity parsing over whole-frame OCR. **Blocked on a console photo** to tune against. `DataScannerViewController` (VisionKit, iOS 16+) is the API behind Live Text and is the right surface. Foundation Models is **text-only** — useful for turning OCR strings into structured fields, useless for reading pixels.
 
-1. **Item 1** — workout tile should open an exercise panel with its own Start Workout, separate from the Start button.
-2. **Item 9** — slider instead of ±15s in-app (Live Activity keeps the buttons).
-3. **Item 10** — the header clock shows total time during rest, which is what makes rest vs. workout state ambiguous.
-4. **Item 11** — on finishing a diverged template: "Save as new workout" / "Keep the old workout". Note the second half of that request (weights carrying across workouts) is a **separate concept** and may already work via §7.3 ghost priority 1 — check before building.
-5. **Item 13** — widget rework. **WidgetKit cannot scroll at any size**, so the shippable shape is the constrained one: current workout, a tick button, tap-through.
-6. **Cardio console rebuild** — remove the draw-a-box flow, remove the contradictory "Attach a photo / auto-reading isn't built yet" caption ([`AddCardioSessionView.swift:93`](../Rerack/Features/Cardio/AddCardioSessionView.swift), now false), and replace with label-proximity parsing over whole-frame OCR. **Blocked on a console photo** to tune against. `DataScannerViewController` (VisionKit, iOS 16+) is the API behind Live Text and is the right surface. Foundation Models is **text-only** — useful for turning OCR strings into structured fields, useless for reading pixels.
-7. **Onboarding** — the swipe gestures from item 2 need a slide, since a swipe nobody knows about is the same as no swipe.
+**Item 7** was explicitly parked by the user until the rest-timer/notification issue recurs.
+
+### Verified as already working, not rebuilt
+
+The second half of item 11 — weights carrying between sessions regardless of which workout you're in — **already works** and was confirmed by accident during the drop-set test: logging Advanced Kettlebell Windmill at 24×12 in one Quick Start session made it appear as Previous `24×12` in the next, with no template involved. That is §7.3 source priority 1 doing its job. Nothing was built for it.
 
 ### Still true from Session 3
 
