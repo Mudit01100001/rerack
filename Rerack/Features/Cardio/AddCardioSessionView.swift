@@ -19,7 +19,6 @@ struct AddCardioSessionView: View {
     @State private var resistanceText = ""
     @State private var notes = ""
 
-    @State private var showingScanner = false
     @State private var photoItem: PhotosPickerItem?
     @State private var photoData: Data?
 
@@ -49,16 +48,13 @@ struct AddCardioSessionView: View {
                     DatePicker("Date", selection: $startedAt, displayedComponents: [.date, .hourAndMinute])
                 }
 
+                // Console OCR was removed here on 2026-08-18 after measuring
+                // it against three real machines. Vision returned *nothing*
+                // from a tight, human-legible crop of a Cosco LCD, and on a
+                // bright Life Fitness LED it read 65:00 as "0959" at full
+                // confidence. See PRD §22.1. Four fields typed on a numeric
+                // keypad beat a scanner that is confidently wrong.
                 Section("Numbers") {
-                    // §22.1: pre-fills this form, never submits for you. The
-                    // OCR is good enough to save typing and not good enough
-                    // to trust unread, so it lands here where you can see it.
-                    Button {
-                        showingScanner = true
-                    } label: {
-                        Label("Scan Console", systemImage: "camera.viewfinder")
-                    }
-
                     TextField("Duration (minutes)", text: $durationMinutesText)
                         .keyboardType(.numberPad)
                     TextField("Distance (km)", text: $distanceKmText)
@@ -90,12 +86,11 @@ struct AddCardioSessionView: View {
                             .frame(maxHeight: 160)
                     }
                 } footer: {
-                    Text("Saved for your own record, auto-reading the numbers off it isn't built yet.")
-                }
-            }
-            .sheet(isPresented: $showingScanner) {
-                ConsoleScanSheet(activity: activity) { values in
-                    applyScanned(values)
+                    // The old caption promised auto-reading "isn't built yet"
+                    // while a Scan Console button sat six rows above it. Both
+                    // halves were wrong; the photo is a record, and that is
+                    // the whole of it.
+                    Text("Kept with the session as your own record of it.")
                 }
             }
             .navigationTitle("Log Cardio")
@@ -114,21 +109,6 @@ struct AddCardioSessionView: View {
                 }
             }
         }
-    }
-
-    /// Writes recognised numbers into the form's own fields, so everything
-    /// downstream (validation, save) behaves exactly as if they were typed.
-    /// Only overwrites what was actually read: a field the scan missed keeps
-    /// whatever you already put there.
-    private func applyScanned(_ values: [ConsoleField: Double]) {
-        func text(_ value: Double) -> String {
-            value.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(value)) : String(format: "%.2f", value)
-        }
-        if let duration = values[.duration] { durationMinutesText = text(duration) }
-        if let distance = values[.distance] { distanceKmText = text(distance) }
-        if let calories = values[.calories] { caloriesText = text(calories) }
-        if let incline = values[.incline] { inclineText = text(incline) }
-        if let resistance = values[.resistance] { resistanceText = text(resistance) }
     }
 
     private func save() {

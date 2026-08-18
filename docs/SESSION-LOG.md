@@ -84,9 +84,27 @@ This is the fourth bug on this project where the build was green and the screen 
 
 ### 🔴 Not done — carried to next session
 
-**Cardio console rebuild.** Remove the draw-a-box flow, remove the contradictory "Attach a photo / auto-reading isn't built yet" caption ([`AddCardioSessionView.swift:93`](../Rerack/Features/Cardio/AddCardioSessionView.swift), now false), and replace with label-proximity parsing over whole-frame OCR. **Blocked on a console photo** to tune against. `DataScannerViewController` (VisionKit, iOS 16+) is the API behind Live Text and is the right surface. Foundation Models is **text-only** — useful for turning OCR strings into structured fields, useless for reading pixels.
-
 **Item 7** was explicitly parked by the user until the rest-timer/notification issue recurs.
+
+### Cardio console OCR — measured against real machines, then deleted
+
+Three photos arrived: two Cosco Fitness treadmills (backlit LCD, seven-segment) and one Life Fitness (bright LED). The plan was to replace the draw-a-box flow with label-anchored crops, since labels ought to be easy to find. They are — and it doesn't matter.
+
+| Test | Result |
+|---|---|
+| Cosco, whole frame | Every printed label at confidence 1.00. **Zero display digits.** |
+| Cosco, tight crop of `24:16` | Nothing, at 4 orientations × 2 polarities × full preprocessing. |
+| Life Fitness, per-value crops | 2 of 6 right. `4.40` gave **both** `448` and `440` at conf 1.00. **`65:00` gave `0959`, `959`, `8059` — all wrong, all conf 1.00.** |
+
+**Vision cannot read seven-segment digits** — they aren't a typeface, so there's no glyph continuity for a recogniser trained on type. And **confidence is not a usable filter**: the worst misread in the set came back at 1.00, so no threshold separates the good reads from the dangerous ones.
+
+The label geometry isn't even consistent: the Cosco puts labels **left** of values, the Life Fitness puts them **below**. That was going to be the hard part. It turned out to be irrelevant.
+
+`DataScannerViewController` uses the same recogniser. Foundation Models is text-only, so it would structure `0959` into a confident wrong answer. Neither is a path forward.
+
+**Removed:** `ConsoleScanSheet.swift`, `CardioConsoleScanner.swift`, the Scan Console button, and the "auto-reading the numbers off it isn't built yet" caption that had been contradicting the button six rows above it. The photo stays as a record; the four numbers are typed.
+
+**The orientation trap bit again.** `sips` reported the photos as 4032×3024 while `NSImage` loaded them as 3024×4032 — an orientation tag AppKit applies and `sips` reports pre-rotation. Two rounds of crops landed in the wrong place while looking entirely reasonable, and were only caught by rendering the crop and looking at it. Same failure as Session 2's `scaledToFit` letterbox.
 
 ### Verified as already working, not rebuilt
 
@@ -196,7 +214,7 @@ Version is at `1.0 (3)` in `project.yml`. Build 3 was archived successfully but 
 
 ### Two corrected assumptions, recorded so they aren't re-researched
 
-- **There is no "Apple Intelligence image model" API.** Foundation Models is text-only and hardware-gated to iPhone 15 Pro and up. Vision is the path for console OCR and it runs everywhere.
+- **There is no "Apple Intelligence image model" API.** Foundation Models is text-only and hardware-gated to iPhone 15 Pro and up. ~~Vision is the path for console OCR and it runs everywhere.~~ **Superseded in Session 4:** Vision cannot read seven-segment displays at all, and console OCR was removed.
 - **There is no separate Apple Fitness SDK.** Fitness is a HealthKit consumer; writing workouts to HealthKit is the whole integration.
 
 **Calories are deliberately not written to HealthKit.** Without heart-rate data any figure would be invented, and Health passes it to other apps as fact.

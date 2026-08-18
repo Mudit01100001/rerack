@@ -24,7 +24,9 @@ Full product spec: [`PRD.md`](PRD.md) · Session history and current blockers: [
 | M10 — Share cards, animal ladder, Instagram Stories | ✅ |
 | M11 — Onboarding, accessibility, units, widgets | ✅ |
 
-Beyond the milestone list: home-screen widgets, cardio-console OCR, split templates, a plate calculator, and kg/lb units.
+Beyond the milestone list: home-screen widgets, split templates, a plate calculator, and kg/lb units.
+
+Cardio-console OCR shipped in V1 and was **removed** on 2026-08-18 after testing against three real machines: Vision cannot read seven-segment displays, and on the one console where it read anything it returned `65:00` as `0959` at full confidence. The measurements are in [PRD §22.1](PRD.md#221-reading-a-console-photo--the-vision-framework--abandoned-2026-08-18).
 
 Row gestures do not use `.swipeActions` — SwiftUI honours it on `List` rows only, and this screen is a `ScrollView` of cards. [`SwipeActionRow`](Rerack/App/SwipeActionRow.swift) reimplements the interaction on a `UIPanGestureRecognizer` so a swipe begun on a text field still works.
 

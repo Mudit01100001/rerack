@@ -1249,7 +1249,7 @@ You mentioned getting to TestFlight within a day. Worth separating two things:
 | **M8 — Analytics & explainers** ✅ *built* | Exercise detail (Summary/History/How To), Swift Charts progress graph across all five metrics, PR cards, profile stats + calendar + exercise usage, activity graph, **`?` system with all 13 registry entries written**. Measures tile still stubbed — needs HealthKit (M9). | 1.5 weeks | ✅ **TestFlight-ready** |
 | **M9 — Data** ✅ *built* | CSV export, Health read + bodyweight maths, Health write, measures. Calories are deliberately **not** written — without heart-rate data the figure would be invented, and Health republishes it to other apps as fact. | 4–5 days | ✅ |
 | **M10 — Share** ✅ *built* | Card rendering, animal ladder, muscle map, export actions, Instagram Stories hand-off, confetti. Artwork is plumbed but not drawn — see [`docs/ARTWORK.md`](docs/ARTWORK.md). | 1 week | ✅ |
-| **M11 — V1 polish** ✅ *built* | Onboarding, icon, empty states, accessibility pass, dominant hand, kg/lb units. Beyond scope: home-screen widgets, cardio-console OCR, split templates, plate calculator. | 4–5 days | ✅ **V1** |
+| **M11 — V1 polish** ✅ *built* | Onboarding, icon, empty states, accessibility pass, dominant hand, kg/lb units. Beyond scope: home-screen widgets, split templates, plate calculator. Cardio-console OCR shipped here and was removed on 2026-08-18 (§22.1). | 4–5 days | ✅ **V1** |
 
 **M3 is make-or-break.** Build it first after the schema, use it in a real session before writing anything else, and let that session dictate what M4 onward actually needs.
 
@@ -1405,16 +1405,27 @@ Built and shipped in the same milestone this section was written in — ahead of
 
 You asked directly whether there's an on-device, free option — for both the "read the treadmill screen" idea and the "give me a weekly/monthly/yearly summary" idea — so you don't have to pay and neither does anyone using the app. Short answer: **yes to both, they're two different Apple frameworks, and both are genuinely free and on-device** — but each has a real limitation worth knowing before any UI gets designed around it. This section is research, explicitly not scoped into any milestone yet.
 
-### 22.1 Reading a console photo — the Vision framework
+### 22.1 Reading a console photo — the Vision framework — **abandoned 2026-08-18**
 
-**What it is:** Apple's **Vision framework** does on-device optical character recognition — `VNRecognizeTextRequest` (mature, available since iOS 13) and the newer `RecognizeDocumentsRequest` (introduced WWDC 2025, adds structure-awareness for things like tables). Both run entirely on-device: no account, no API key, no network call, no cost, ever — this is a completely different technology from Apple Intelligence, and doesn't share its hardware restrictions (§22.2). It runs on any iPhone capable of running the app at all.
+**Console OCR was built, shipped in V1, and has now been removed.** It was tested against three real machines — two Cosco Fitness treadmills (backlit LCD, 7-segment) and one Life Fitness (bright LED). The measurements:
 
-**The real risk, stated plainly:** generic OCR is trained on ordinary printed and handwritten text. Gym console displays are frequently **seven-segment LED or dot-matrix LCD** — a stylized digit format that standard text-recognition models are known to misread more often than normal text, especially at an angle or with screen glare. Nothing in the current Vision documentation calls out a segmented-display-specific mode. This means "point your camera at the treadmill and it just works" is **not a safe promise to design UI around** until it's actually been prototyped against a handful of real gym consoles.
+| Console | Result |
+|---|---|
+| Cosco LCD, whole frame | Every printed label read at confidence 1.00 — `TIME`, `DIST`, `CALO`, `SPEED`, `INCLINE`. **Zero display digits.** |
+| Cosco LCD, tight crop of `24:16` | Nothing, at four orientations × both polarities × the full preprocessing recipe (invert, mono, contrast 2.5, 3× upscale, 80px white margin). |
+| Life Fitness LED, per-value crops | 2 of 6 correct. `459` ✓ and `14:45` ✓. `4.40` returned **both** `448` and `440` at confidence 1.00. `3.0` returned `370`/`37`/`378`. **`65:00` returned `0959`, `959` and `8059` — every one wrong, every one at confidence 1.00.** |
 
-**Recommended path, when this gets picked up:**
-1. Spike it first, cheaply — a throwaway test harness pointed at photos of a few different real consoles (treadmill, bike, rower — displays vary a lot), before writing any production UI.
-2. If accuracy is good: auto-fill the manual entry fields (§21.1) from the recognized text, but land the user on the **same editable form**, pre-filled rather than submitted — never a one-tap "trust the photo" flow. A misread number silently entering your log is worse than typing it yourself.
-3. If accuracy is poor for segmented displays specifically: the feature quietly doesn't ship, and nothing is lost — manual entry was never blocked on it (§21.2).
+Three conclusions, in order of importance:
+
+1. **Vision cannot read seven-segment or segmented-LED digits.** They are not a typeface — there is no glyph continuity for a text recogniser trained on type. Better crops don't fix it; a correct, tight, human-legible crop returned nothing.
+2. **Confidence is not a usable filter.** The single worst misread in the whole set — `65:00` → `0959` — came back at 1.00. There is no threshold that keeps the good reads and drops the bad ones.
+3. **The label geometry that *does* work is useless without step 1.** Labels read perfectly every time, and their position relative to values is not even consistent between machines: the Cosco puts labels to the **left** of values, the Life Fitness puts them **below**. Anchoring crops to labels was the plan; it fails because the crop contents are unreadable regardless of where the crop is.
+
+**What this rules out.** `DataScannerViewController` (VisionKit's Live Text camera) uses the same recogniser and fails the same way. Foundation Models is text-only — it can turn recognised strings into structured fields but cannot look at pixels, so feeding it `0959` yields a confidently structured wrong answer. Neither is a path forward.
+
+**What replaced it.** Nothing. The four numeric fields are typed. §21.2's photo attachment stays as a plain record of the session, with no claim that anything is read from it.
+
+**One trap worth keeping.** `sips` reported these photos as 4032×3024 while `NSImage`/`CGImage` loaded them as 3024×4032 — the files carry an orientation tag that AppKit applies and `sips` reports pre-rotation. Every crop computed from the "obvious" dimensions landed somewhere else entirely while looking perfectly reasonable. This is the same failure recorded in Session 2, and it cost two rounds here before the crop was rendered and *looked at*.
 
 ### 22.2 Weekly / monthly / yearly check-ins — the Foundation Models framework
 
