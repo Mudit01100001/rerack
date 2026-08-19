@@ -8,7 +8,7 @@ Full product spec: [`PRD.md`](PRD.md) · Session history and current blockers: [
 
 ## Status
 
-**V1 feature-complete.** Every milestone M1–M11 is built. Drop sets and swipe-to-delete were unreachable at runtime for the whole of V1 and were fixed on 2026-08-18, verified end to end against the SQLite store.
+**V1 feature-complete, build 5.** Every milestone M1–M11 is built. Drop sets and swipe-to-delete were unreachable at runtime for the whole of V1 and were fixed on 2026-08-18; a first round of on-device feedback (scrolling, the Live Activity, haptics, onboarding, swipe visuals) landed on 2026-08-19. All verified end to end against the SQLite store or on the simulator — see [`docs/SESSION-LOG.md`](docs/SESSION-LOG.md) Sessions 3–5.
 
 | Milestone | State |
 |---|---|
@@ -28,9 +28,9 @@ Beyond the milestone list: home-screen widgets, split templates, a plate calcula
 
 Cardio-console OCR shipped in V1 and was **removed** on 2026-08-18 after testing against three real machines: Vision cannot read seven-segment displays, and on the one console where it read anything it returned `65:00` as `0959` at full confidence. The measurements are in [PRD §22.1](PRD.md#221-reading-a-console-photo--the-vision-framework--abandoned-2026-08-18).
 
-Row gestures do not use `.swipeActions` — SwiftUI honours it on `List` rows only, and this screen is a `ScrollView` of cards. [`SwipeActionRow`](Rerack/App/SwipeActionRow.swift) reimplements the interaction on a `UIPanGestureRecognizer` so a swipe begun on a text field still works.
+Row gestures do not use `.swipeActions` — SwiftUI honours it on `List` rows only, and this screen is a `ScrollView` of cards. [`SwipeActionRow`](Rerack/App/SwipeActionRow.swift) reimplements the interaction with a single gesture recognizer shared by every row (a hub, not one per row — that per-row version was the cause of build 4's scroll jank), so a swipe begun on a text field still works and the list stays smooth in a long workout. The workout screen itself is a system `.sheet`, not a hand-rolled dismiss gesture, so scroll and dismiss can't fight each other.
 
-A batch of UX fixes from a full-workout test landed alongside it, and several more are still open — see the [session log](docs/SESSION-LOG.md) for the exact split.
+Two batches of UX fixes from full-workout tests have landed — see the [session log](docs/SESSION-LOG.md) Sessions 4–5 for the exact split of what shipped versus what's still open. A tuning surface for how the app's haptics feel lives at Profile → Developer → Haptics Lab, since that can only be judged on a real device.
 
 Two further things are deliberately outstanding rather than unfinished — artwork, which needs files rather than code ([`docs/ARTWORK.md`](docs/ARTWORK.md)), and Apple Calendar sync, which is an open product decision. Both are tracked in the [session log](docs/SESSION-LOG.md).
 
