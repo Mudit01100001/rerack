@@ -144,6 +144,22 @@ struct ProfileView: View {
                         Label("Export Measures (CSV)", systemImage: "square.and.arrow.up")
                     }
                 }
+
+                // Haptics can only be judged by feel, on a device — a
+                // developer at a desk can't do it — so the tuning screen
+                // ships in the app itself rather than as a separate build.
+                // It's low-traffic enough not to need hiding behind a
+                // gesture, but "Developer" and the footer keep it from
+                // reading as a real setting.
+                Section {
+                    NavigationLink("Haptics Lab") {
+                        HapticsLabView()
+                    }
+                } header: {
+                    Text("Developer")
+                } footer: {
+                    Text("Tuning surface for how the app feels; safe to ignore.")
+                }
             }
             .navigationTitle("Profile")
         }

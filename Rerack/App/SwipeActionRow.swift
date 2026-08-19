@@ -76,15 +76,27 @@ struct SwipeActionRow<Content: View>: View {
     @State private var settledOffset: CGFloat = 0
     @State private var hasCrossedThreshold = false
 
-    /// Wide enough for a 20pt glyph plus breathing room on each side, and
-    /// comfortably past the 44pt minimum touch target.
-    private let actionWidth: CGFloat = 74
+    /// Build 5 item B: iOS 26 Mail's swipe-action geometry, read off the
+    /// reference the user supplied — a 44pt filled circle per action, 16pt
+    /// between circles, the whole group inset 12pt from the row's edge.
+    /// `actionWidth` is that per-action footprint; a side's fully-open offset
+    /// is `count × actionWidth + edgeInset`. This replaces the old iOS-7-era
+    /// full-height coloured strip entirely.
+    private let circleDiameter: CGFloat = 44
+    private let circleSpacing: CGFloat = 16
+    private let edgeInset: CGFloat = 12
+    private var actionWidth: CGFloat { circleDiameter + circleSpacing }
     /// Past this fraction of the revealed width, releasing commits instead of
     /// snapping open.
     private let fullSwipeFraction: CGFloat = 1.6
 
-    private var leadingWidth: CGFloat { CGFloat(leading.count) * actionWidth }
-    private var trailingWidth: CGFloat { CGFloat(trailing.count) * actionWidth }
+    private func revealWidth(for actions: [SwipeAction]) -> CGFloat {
+        guard !actions.isEmpty else { return 0 }
+        return CGFloat(actions.count) * actionWidth + edgeInset
+    }
+
+    private var leadingWidth: CGFloat { revealWidth(for: leading) }
+    private var trailingWidth: CGFloat { revealWidth(for: trailing) }
 
     var body: some View {
         ZStack {
@@ -92,7 +104,7 @@ struct SwipeActionRow<Content: View>: View {
             content()
                 .background(
                     // The content needs an opaque backing or the action
-                    // buttons show through the row as it slides.
+                    // circles show through the row as it slides.
                     Color(.secondarySystemGroupedBackground)
                         .opacity(offset == 0 ? 0 : 1)
                 )
@@ -105,6 +117,7 @@ struct SwipeActionRow<Content: View>: View {
                     // fields' own UIKit recognizers win the arena before a
                     // parent `simultaneousGesture` ever sees the touch.
                     SwipeGestureCatcher(
+                        rowID: rowID,
                         onChanged: { handleDragChanged($0) },
                         onEnded: { translation, velocity in
                             handleDragEnded(translation: translation, velocity: velocity)
@@ -113,6 +126,11 @@ struct SwipeActionRow<Content: View>: View {
                 )
         }
         .clipped()
+        .onAppear {
+            // Idempotent: every row sets the same closure on the shared hub.
+            let coordinator = self.coordinator
+            SwipeGestureHub.shared.onScrollBegan = { coordinator.close() }
+        }
         .onChange(of: coordinator.openRowID) { _, newValue in
             guard newValue != rowID, offset != 0 else { return }
             close()
@@ -136,39 +154,57 @@ struct SwipeActionRow<Content: View>: View {
     private var actionLayer: some View {
         HStack(spacing: 0) {
             if !leading.isEmpty {
-                actionStack(leading, revealed: max(offset, 0))
+                actionStack(leading, revealed: max(offset, 0), width: leadingWidth, insetEdge: .leading)
             }
             Spacer(minLength: 0)
             if !trailing.isEmpty {
-                actionStack(trailing, revealed: max(-offset, 0))
+                actionStack(trailing, revealed: max(-offset, 0), width: trailingWidth, insetEdge: .trailing)
             }
         }
     }
 
-    private func actionStack(_ actions: [SwipeAction], revealed: CGFloat) -> some View {
-        HStack(spacing: 0) {
+    /// iOS 26 Mail draws each action as a filled circle with its label
+    /// underneath, *outside* the circle, rather than an icon-over-label pill
+    /// filling a coloured strip. Nothing here paints a background behind the
+    /// `HStack` itself — the circles float directly on whatever the row sits
+    /// on, and only the content layer in `body` carries an opaque background,
+    /// so the row visibly slides over them rather than the circles sliding
+    /// out from underneath a strip.
+    private func actionStack(
+        _ actions: [SwipeAction],
+        revealed: CGFloat,
+        width: CGFloat,
+        insetEdge: Edge.Set
+    ) -> some View {
+        let progress = width > 0 ? min(revealed / width, 1) : 0
+        return HStack(spacing: circleSpacing) {
             ForEach(actions) { action in
                 Button {
                     fire(action)
                 } label: {
-                    VStack(spacing: 3) {
-                        Image(systemName: action.systemImage)
-                            .font(.system(size: 17, weight: .semibold))
+                    VStack(spacing: 4) {
+                        Circle()
+                            .fill(action.tint)
+                            .frame(width: circleDiameter, height: circleDiameter)
+                            .overlay {
+                                Image(systemName: action.systemImage)
+                                    .font(.system(size: 17, weight: .semibold))
+                                    .foregroundStyle(.white)
+                            }
                         Text(action.label)
-                            .dsFont(DS.TypeScale.caption2, relativeTo: .caption2, weight: .semibold)
-                            .lineLimit(1)
+                            .dsFont(DS.TypeScale.caption2, relativeTo: .caption2)
+                            .foregroundStyle(.secondary)
                     }
-                    .foregroundStyle(.white)
-                    .frame(width: actionWidth)
-                    .frame(maxHeight: .infinity)
-                    .background(action.tint)
                 }
                 .buttonStyle(.plain)
             }
         }
-        // Fading the buttons in as the row moves stops them appearing fully
-        // formed under a row that has barely shifted.
-        .opacity(Double(min(revealed / actionWidth, 1)))
+        .padding(insetEdge, edgeInset)
+        // Grows in from a slightly shrunk, transparent state rather than
+        // appearing fully formed the instant the row starts moving — the
+        // same "materialising" feel the reference's own reveal has.
+        .scaleEffect(0.6 + 0.4 * progress)
+        .opacity(progress)
     }
 
     // MARK: - Gesture
@@ -248,115 +284,216 @@ struct SwipeActionRow<Content: View>: View {
 
 // MARK: - UIKit pan catcher
 
-/// Installs a `UIPanGestureRecognizer` on the enclosing scroll view and gates
-/// it to horizontal movement that started inside this row.
+/// Gives `SwipeGestureHub` a view whose frame describes where this row is,
+/// and registers/unregisters this row with it.
 ///
-/// Attaching to the scroll view rather than to the row is deliberate. A
-/// recognizer added to the row's own backing view sits *below* the text
-/// fields in the responder chain and loses to them; one on the shared
-/// ancestor sees every touch, and `gestureRecognizerShouldBegin` filters it
-/// back down to "horizontal, and inside my bounds."
-///
-/// Vertical scrolling is untouched because the recognizer refuses to begin
-/// unless the pan is decisively horizontal, and it declares simultaneous
-/// recognition so taps still reach the field underneath.
+/// Attaching to the scroll view rather than to the row is deliberate — see
+/// the hub's own header comment. A recognizer added to the row's own backing
+/// view sits *below* the text fields in the responder chain and loses to
+/// them; one on the shared ancestor sees every touch, and the hub's
+/// `gestureRecognizerShouldBegin` filters it back down to "horizontal, and
+/// inside this row's bounds."
 private struct SwipeGestureCatcher: UIViewRepresentable {
+    let rowID: UUID
     let onChanged: (CGFloat) -> Void
     let onEnded: (CGFloat, CGFloat) -> Void
 
-    func makeUIView(context: Context) -> UIView {
+    func makeUIView(context: Context) -> PassthroughView {
         let view = PassthroughView()
-        context.coordinator.rowView = view
-        context.coordinator.scheduleInstall()
+        SwipeGestureHub.shared.register(id: rowID, markerView: view, onChanged: onChanged, onEnded: onEnded)
         return view
     }
 
-    func updateUIView(_ uiView: UIView, context: Context) {
-        context.coordinator.onChanged = onChanged
-        context.coordinator.onEnded = onEnded
-        context.coordinator.scheduleInstall()
+    func updateUIView(_ uiView: PassthroughView, context: Context) {
+        // An upsert, not a one-time registration: SwiftUI calls this on
+        // every re-render, and the closures captured here close over this
+        // render's `offset`/`settledOffset` — the hub needs the *current*
+        // ones, not whichever were current when the row first appeared.
+        SwipeGestureHub.shared.register(id: rowID, markerView: uiView, onChanged: onChanged, onEnded: onEnded)
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onChanged: onChanged, onEnded: onEnded)
+        Coordinator(rowID: rowID)
+    }
+
+    /// The other half of `register`, and the actual fix for the leak: called
+    /// the moment SwiftUI tears this row's representable down, so a
+    /// scrolled-away, recycled, or deleted row can never again be routed a
+    /// touch that lands where it used to be.
+    static func dismantleUIView(_ uiView: PassthroughView, coordinator: Coordinator) {
+        SwipeGestureHub.shared.unregister(id: coordinator.rowID)
     }
 
     /// Never a hit-test target, so it cannot steal a tap from the row it
-    /// covers — it exists only to give the coordinator a view whose frame
-    /// describes where this row is.
+    /// covers — it exists only to give the hub a view whose frame describes
+    /// where this row is.
     final class PassthroughView: UIView {
         override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? { nil }
     }
 
+    /// Carries the identity `dismantleUIView` unregisters, and gives `deinit`
+    /// a second, independent unregister path — SwiftUI doesn't promise
+    /// `dismantleUIView` and the coordinator's deallocation land in the same
+    /// runloop turn, and a row left registered in the gap between them could
+    /// still catch a touch that belongs to nothing on screen any more.
     @MainActor
-    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+    final class Coordinator {
+        let rowID: UUID
+
+        init(rowID: UUID) {
+            self.rowID = rowID
+        }
+
+        deinit {
+            // `deinit` isn't guaranteed to run on the main actor, so the
+            // MainActor-isolated unregister has to be hopped to rather than
+            // called directly. Only a plain `UUID` value crosses that hop —
+            // never `self`, which is already being torn down.
+            let id = rowID
+            Task { @MainActor in
+                SwipeGestureHub.shared.unregister(id: id)
+            }
+        }
+    }
+}
+
+/// The single `UIPanGestureRecognizer` every swipeable row shares.
+///
+/// Previously, every row installed its own `UIPanGestureRecognizer` directly
+/// on the shared `UIScrollView` and never removed it: a 6-exercise session
+/// put roughly two dozen recognizers on one scroll view, all evaluated on
+/// every touch, and they kept accumulating as rows recycled during scrolling
+/// — which is what made scrolling itself feel janky, not just the swipe
+/// gesture. This hub installs exactly one recognizer, the first time any row
+/// asks for it, and keeps a registry of `(rowID, weak markerView, onChanged,
+/// onEnded)` it can route a gesture to. `gestureRecognizerShouldBegin` picks
+/// the one row whose marker view contains the touch's start location and
+/// claims the gesture for that row until it ends — so a single diagonal drag
+/// can't hand off between rows mid-gesture.
+@MainActor
+final class SwipeGestureHub: NSObject, UIGestureRecognizerDelegate {
+    static let shared = SwipeGestureHub()
+
+    /// Fired when the hub sees a touch on the scroll view that is *not* a
+    /// horizontal swipe — a scroll, a tap into a field. The row coordinator
+    /// uses it to close whichever row is open.
+    var onScrollBegan: (() -> Void)?
+
+    private final class Entry {
+        weak var markerView: UIView?
         var onChanged: (CGFloat) -> Void
         var onEnded: (CGFloat, CGFloat) -> Void
-        weak var rowView: UIView?
-        private weak var installedOn: UIView?
-        private var installAttempts = 0
-
-        init(onChanged: @escaping (CGFloat) -> Void, onEnded: @escaping (CGFloat, CGFloat) -> Void) {
+        init(markerView: UIView, onChanged: @escaping (CGFloat) -> Void, onEnded: @escaping (CGFloat, CGFloat) -> Void) {
+            self.markerView = markerView
             self.onChanged = onChanged
             self.onEnded = onEnded
         }
+    }
 
-        /// The view is not in a window yet when `makeUIView` runs, so the
-        /// scroll view cannot be found on the first pass. Retry a handful of
-        /// times rather than once — a single `async` hop is enough on a warm
-        /// launch and not enough on a cold one.
-        func scheduleInstall() {
-            guard installedOn == nil, installAttempts < 6 else { return }
-            installAttempts += 1
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                if self.install() == false { self.scheduleInstall() }
+    private var entries: [UUID: Entry] = [:]
+    private weak var installedOn: UIScrollView?
+    /// The row currently owning an in-flight gesture, set the moment
+    /// `gestureRecognizerShouldBegin` picks a winner and held until the
+    /// gesture ends — every `.changed` in between routes here rather than
+    /// re-hit-testing on each move.
+    private var activeID: UUID?
+
+    private override init() { super.init() }
+
+    /// An upsert, not a plain add — see `updateUIView`'s comment for why
+    /// registering more than once is expected and harmless.
+    func register(
+        id: UUID,
+        markerView: UIView,
+        onChanged: @escaping (CGFloat) -> Void,
+        onEnded: @escaping (CGFloat, CGFloat) -> Void
+    ) {
+        entries[id] = Entry(markerView: markerView, onChanged: onChanged, onEnded: onEnded)
+        installIfNeeded(startingFrom: markerView)
+    }
+
+    func unregister(id: UUID) {
+        entries.removeValue(forKey: id)
+        if activeID == id { activeID = nil }
+    }
+
+    /// The marker view isn't in a window yet the first time any row
+    /// registers, so the scroll view can't always be found on the first try.
+    /// Retried a handful of times rather than once — a single hop is enough
+    /// on a warm launch and not enough on a cold one.
+    private func installIfNeeded(startingFrom markerView: UIView, attempt: Int = 0) {
+        guard installedOn == nil else { return }
+        guard let scrollView = Self.enclosingScrollView(of: markerView) else {
+            guard attempt < 6 else { return }
+            Task { @MainActor [weak self, weak markerView] in
+                guard let self, let markerView else { return }
+                self.installIfNeeded(startingFrom: markerView, attempt: attempt + 1)
             }
+            return
         }
+        let pan = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+        pan.delegate = self
+        scrollView.addGestureRecognizer(pan)
+        installedOn = scrollView
+    }
 
-        private func install() -> Bool {
-            guard installedOn == nil, let rowView else { return true }
-            var candidate: UIView? = rowView.superview
-            while let view = candidate, !(view is UIScrollView) {
-                candidate = view.superview
+    private static func enclosingScrollView(of view: UIView) -> UIScrollView? {
+        var candidate: UIView? = view.superview
+        while let current = candidate, !(current is UIScrollView) {
+            candidate = current.superview
+        }
+        return candidate as? UIScrollView
+    }
+
+    @objc private func handlePan(_ pan: UIPanGestureRecognizer) {
+        guard let activeID, let entry = entries[activeID] else { return }
+        let translation = pan.translation(in: pan.view).x
+        switch pan.state {
+        case .changed:
+            entry.onChanged(translation)
+        case .ended, .cancelled, .failed:
+            entry.onEnded(translation, pan.velocity(in: pan.view).x)
+            self.activeID = nil
+        default:
+            break
+        }
+    }
+
+    /// The one arbiter for the whole scroll view: the pan has to be
+    /// decisively horizontal, and its start location has to fall inside
+    /// exactly one registered row's marker view.
+    nonisolated func gestureRecognizerShouldBegin(_ recognizer: UIGestureRecognizer) -> Bool {
+        MainActor.assumeIsolated {
+            guard let pan = recognizer as? UIPanGestureRecognizer, let scrollView = pan.view else { return false }
+            let velocity = pan.velocity(in: scrollView)
+            // 1.5x rather than a plain comparison: a mostly-vertical drag
+            // with a little sideways drift is a scroll, not a swipe.
+            guard abs(velocity.x) > abs(velocity.y) * 1.5 else {
+                // A scroll has begun. Mail closes any open row the moment
+                // you scroll or touch anywhere else, and a row left hanging
+                // open while the list moves under it reads as broken — so
+                // the hub, which sees every touch on the scroll view, is
+                // the one place that can close it reliably.
+                onScrollBegan?()
+                return false
             }
-            guard let scrollView = candidate else { return false }
-            let pan = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
-            pan.delegate = self
-            scrollView.addGestureRecognizer(pan)
-            installedOn = scrollView
-            return true
-        }
-
-        @objc private func handlePan(_ pan: UIPanGestureRecognizer) {
-            let translation = pan.translation(in: pan.view).x
-            switch pan.state {
-            case .changed:
-                onChanged(translation)
-            case .ended, .cancelled, .failed:
-                onEnded(translation, pan.velocity(in: pan.view).x)
-            default:
-                break
+            let touch = pan.location(in: scrollView)
+            for (id, entry) in entries {
+                guard let markerView = entry.markerView else { continue }
+                let local = markerView.convert(touch, from: scrollView)
+                if markerView.bounds.contains(local) {
+                    activeID = id
+                    return true
+                }
             }
+            return false
         }
+    }
 
-        nonisolated func gestureRecognizerShouldBegin(_ recognizer: UIGestureRecognizer) -> Bool {
-            MainActor.assumeIsolated {
-                guard let pan = recognizer as? UIPanGestureRecognizer, let rowView else { return false }
-                let velocity = pan.velocity(in: pan.view)
-                // 1.5x rather than a plain comparison: a mostly-vertical drag
-                // with a little sideways drift is a scroll, not a swipe.
-                guard abs(velocity.x) > abs(velocity.y) * 1.5 else { return false }
-                let location = pan.location(in: rowView)
-                return rowView.bounds.contains(location)
-            }
-        }
-
-        nonisolated func gestureRecognizer(
-            _ recognizer: UIGestureRecognizer,
-            shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
-        ) -> Bool {
-            true
-        }
+    nonisolated func gestureRecognizer(
+        _ recognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
+    ) -> Bool {
+        true
     }
 }

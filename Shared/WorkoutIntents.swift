@@ -60,6 +60,24 @@ struct LogSetIntent: LiveActivityIntent {
         let setLog: SetLog
         if let existingID = pointer.setLogID,
            let existing = (workoutExercise.sets ?? []).first(where: { $0.id == existingID }) {
+            // Build 5 item E safety net: a row that's already logged is
+            // never rewritten from the Lock Screen, regardless of what the
+            // pointer says. This is the exact shape of the loop the pointer
+            // fix above closes at the source — `pointer(for:)` used to treat
+            // the completed *count* as the row *index*, so with a gap
+            // (rows 0 and 2 ticked, row 1 open) it resolved to row 2, which
+            // was already done. `LogSetIntent` then found that row via
+            // `setLogID` and quietly overwrote its `completedAt` and
+            // `loggedFrom`, restarting rest on a set the user finished
+            // minutes ago, while `completedCount` never moved — so the
+            // exercise never advanced no matter how many times the Lock
+            // Screen was tapped. The pointer can no longer hand out an
+            // already-completed row, but this guard is what makes the write
+            // itself safe against any future or stale pointer that does.
+            guard !existing.isCompleted else {
+                LiveActivityController.shared.refresh(workout: workout, exercises: exercises, ghostsProvider: ghostsProvider)
+                return .result()
+            }
             setLog = existing
         } else {
             setLog = SetLog(orderIndex: setIndex)

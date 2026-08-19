@@ -20,6 +20,41 @@ enum WorkoutEngine {
         (workoutExercise.sets ?? []).filter { $0.isCompleted && $0.parentSetID == nil }.count
     }
 
+    /// Every top-level row for this exercise, completed or not. Build 5 item
+    /// E's whole fix is treating a row's *position* as the source of truth
+    /// instead of the completed *count* — this is the one place that filter
+    /// is written, so `rowCount(for:ghostCount:)`, `pointer(for:)` and the
+    /// superset round check in `thenLine` all read the same rows.
+    private static func topLevelSets(_ workoutExercise: WorkoutExercise) -> [SetLog] {
+        (workoutExercise.sets ?? []).filter { $0.parentSetID == nil }
+    }
+
+    /// How many rows a card should render for this exercise, and the same
+    /// upper bound `pointer(for:)` scans within for the next open slot.
+    /// `ExerciseCardView` used to compute this itself from `completedSetCount`
+    /// alone, which could fall short of the truth right after an un-tick: the
+    /// row stays in the store with `isCompleted == false`, still occupying a
+    /// slot, but no longer counted. Folding in the actual row count (not just
+    /// the completed ones) is what keeps the card and the Live Activity
+    /// pointer from ever disagreeing about how many rows exist.
+    static func rowCount(for workoutExercise: WorkoutExercise, ghostCount: Int) -> Int {
+        max(workoutExercise.plannedSetCount ?? ghostCount, topLevelSets(workoutExercise).count, 1)
+    }
+
+    /// Whether `workoutExercise` has ticked the row for round `round`
+    /// (1-indexed) *specifically* — not merely logged `round` sets somewhere.
+    /// The superset round walk in `thenLine` used to ask
+    /// `completedCount(candidate) < round`, which only agrees with "hasn't
+    /// done this round" when ticks land in order. A member who ticked round 3
+    /// out of order but left round 2 open has `completedCount == 2`: that
+    /// read as "hasn't reached round 2," which happens to be true, but it
+    /// would just as easily have read "hasn't reached round 3" as false when
+    /// round 3's own row is in fact done. Checking the specific row removes
+    /// the coincidence.
+    private static func hasCompletedRound(_ round: Int, in workoutExercise: WorkoutExercise) -> Bool {
+        topLevelSets(workoutExercise).first { $0.orderIndex == round - 1 }?.isCompleted == true
+    }
+
     /// Whether the chain rooted at `setLog` still has un-ticked drops under
     /// it. Since M6 §9.3 drop rows are persisted the moment they're created,
     /// so this is answerable from the store — it used to be a `hasPendingDrop`
@@ -104,7 +139,11 @@ enum WorkoutEngine {
         if let openDrop = firstOpenDrop(in: all) { return openDrop }
 
         // Anchor on the most recently completed set, if there is one; a
-        // workout with nothing logged starts at the first unit.
+        // workout with nothing logged starts at the first unit. This anchor
+        // only needs to know *which exercise* had the latest tick — it reads
+        // that off `completedAt`, never off a count or an index — so it was
+        // never the thing that broke when a completed count stopped matching
+        // a row index; `pointer(for:)` below is.
         let lastCompleted = all
             .flatMap { exercise in (exercise.sets ?? []).map { (exercise, $0) } }
             .filter { $0.1.isCompleted && $0.1.completedAt != nil }
@@ -188,7 +227,16 @@ enum WorkoutEngine {
     /// The next set within a single exercise.
     ///
     /// M6 delta D3: length comes from `plannedSetCount` (falling back to the
-    /// ghost count), so `+ Add Set` is visible to the pointer.
+    /// ghost count) via `rowCount(for:ghostCount:)`, so `+ Add Set` is
+    /// visible to the pointer.
+    /// Build 5 item E: the target row is the first slot in `0..<planned` that
+    /// isn't ticked, found by scanning — not the completed *count*, which
+    /// this used to treat as the row *index*. That assumption holds only
+    /// while every tick lands in order; the moment rows 0 and 2 are ticked
+    /// and row 1 isn't, `completedCount == 2` pointed at row 2 — already
+    /// done — and every Lock Screen tick rewrote that finished row forever
+    /// instead of ever reaching row 1, because `completedCount` never
+    /// changes when the row you overwrite was already completed.
     /// M6 delta D2: an exercise with no history *and* no routine target is
     /// landed on rather than skipped, with an unknown payload — otherwise the
     /// island silently drops the exercise in exactly the case where the user
@@ -199,14 +247,16 @@ enum WorkoutEngine {
         ghostsProvider: (WorkoutExercise) -> [GhostSet]
     ) -> NextSetPointer? {
         let ghosts = ghostsProvider(workoutExercise)
-        let completed = completedCount(workoutExercise)
-        let planned = max(workoutExercise.plannedSetCount ?? ghosts.count, 1)
-        guard completed < planned else { return nil }
+        let top = topLevelSets(workoutExercise)
+        let planned = rowCount(for: workoutExercise, ghostCount: ghosts.count)
+        guard let slot = (0..<planned).first(where: { i in top.first { $0.orderIndex == i }?.isCompleted != true }) else {
+            return nil
+        }
 
-        let ghost = completed < ghosts.count ? ghosts[completed] : ghosts.last
+        let ghost = GhostSetResolver.ghostSet(at: slot, in: ghosts)
         let supersetLabel = SupersetGrouping.label(for: workoutExercise, among: allExercises)
         let isInSuperset = groupMembers(of: workoutExercise, in: allExercises).count > 1
-        let setNumber = completed + 1
+        let setNumber = slot + 1
         let totalKnown = workoutExercise.plannedSetCount != nil || !ghosts.isEmpty
 
         let positionLabel: String
@@ -227,8 +277,8 @@ enum WorkoutEngine {
         return NextSetPointer(
             workoutExerciseID: workoutExercise.id,
             exerciseName: workoutExercise.exercise?.name ?? "Exercise",
-            setLogID: (workoutExercise.sets ?? []).first { $0.parentSetID == nil && $0.orderIndex == completed }?.id,
-            setIndex: completed,
+            setLogID: top.first { $0.orderIndex == slot }?.id,
+            setIndex: slot,
             setNumber: setNumber,
             weightKg: ghost?.weightKg ?? 0,
             reps: ghost?.reps ?? 0,
@@ -263,8 +313,17 @@ enum WorkoutEngine {
             let round = pointer.setNumber
             guard let myIndex = members.firstIndex(where: { $0.id == current.id }) else { return nil }
 
-            // Next member of this round: first one after me still behind `round`.
-            for candidate in members[(myIndex + 1)...] where completedCount(candidate) < round {
+            // Next member of this round: first one after me who hasn't ticked
+            // *round*'s own row yet. This used to read `completedCount(candidate)
+            // < round`, which only agrees with "hasn't done this round" when
+            // ticks land in order — a member who ticked round 3 out of order
+            // but left round 2 open has `completedCount == 2`, which happens
+            // to still say "hasn't reached round 2" correctly but would say
+            // the same false thing about round 3, whose row is in fact done.
+            // `hasCompletedRound` checks the specific row instead of a count
+            // that a gap can decouple from it — same fix as `pointer(for:)`,
+            // applied to "has this candidate done fewer rounds than mine."
+            for candidate in members[(myIndex + 1)...] where !hasCompletedRound(round, in: candidate) {
                 guard let target = Self.pointer(for: candidate, allExercises: allExercises, ghostsProvider: ghostsProvider) else { continue }
                 let label = target.supersetLabel.map { "\($0) " } ?? ""
                 if target.isPayloadKnown {
@@ -273,8 +332,12 @@ enum WorkoutEngine {
                 return "Then  \(label)\(target.exerciseName)"
             }
 
-            // Last member of the round. Back to the top if rounds remain…
-            for candidate in members where completedCount(candidate) == round {
+            // Last member of the round. Back to the top if rounds remain —
+            // the mirror image of the row check above: this used to compare
+            // `completedCount(candidate) == round` exactly, which a candidate
+            // who raced ahead of the round-robin (ticked past `round`) would
+            // fail even though they plainly have done this round's row.
+            for candidate in members where hasCompletedRound(round, in: candidate) {
                 guard let target = Self.pointer(for: candidate, allExercises: allExercises, ghostsProvider: ghostsProvider) else { continue }
                 let label = target.supersetLabel.map { "\($0) " } ?? ""
                 return "Then  rest, back to \(label)\(target.exerciseName)"
@@ -288,9 +351,11 @@ enum WorkoutEngine {
             return nil
         }
 
-        // Standalone: only the last planned set changes exercise next.
+        // Standalone: only the last planned set changes exercise next. Same
+        // `rowCount` the pointer and `ExerciseCardView` use, so "last" can't
+        // disagree between the three.
         let ghosts = ghostsProvider(current)
-        let planned = max(current.plannedSetCount ?? ghosts.count, 1)
+        let planned = rowCount(for: current, ghostCount: ghosts.count)
         guard pointer.setNumber == planned,
               let next = nextInSequence(after: current.orderIndex, allExercises: allExercises, ghostsProvider: ghostsProvider)
         else { return nil }

@@ -1,11 +1,13 @@
 import SwiftUI
 import SwiftData
 
-/// PRD §7.1/§7.2/§7.4/§7.9. Row count = `max(ghosts + manually-added rows,
-/// completed sets, 1)` — ghost rows past the completed count are pure view
-/// state (§7.3) and never touch the database until ticked or edited. Drop
-/// chains render underneath their parent's row and are counted separately
-/// (§7.9) so they never shift the numbering ghosts are matched against.
+/// PRD §7.1/§7.2/§7.4/§7.9. Row count comes from `WorkoutEngine.rowCount(for:
+/// ghostCount:)` — `max(planned set count or ghost count, rows that actually
+/// exist in the store, 1)` — ghost rows past what's in the store are pure
+/// view state (§7.3) and never touch the database until ticked or edited.
+/// Drop chains render underneath their parent's row and are counted
+/// separately (§7.9) so they never shift the numbering ghosts are matched
+/// against.
 struct ExerciseCardView: View {
     @Bindable var workoutExercise: WorkoutExercise
     let allExercises: [WorkoutExercise]
@@ -70,7 +72,9 @@ struct ExerciseCardView: View {
         topLevelSets.first { $0.orderIndex == index }
     }
 
-    /// Only completed rows count toward how many rows must exist.
+    /// Used as `deleteRow(index:)`'s floor: a completed row can never be
+    /// deleted out from under the plan (deleting a *different* un-ticked row
+    /// still has to leave room for every set already logged).
     private var completedSetCount: Int {
         topLevelSets.filter(\.isCompleted).count
     }
@@ -79,8 +83,14 @@ struct ExerciseCardView: View {
     /// to be a `@State extraRows` counter. Unset means "however many ghosts
     /// resolve," so a routine-driven exercise needs nothing written until
     /// `+ Add Set` is actually tapped.
+    ///
+    /// Build 5 item E: delegates to `WorkoutEngine.rowCount(for:ghostCount:)`
+    /// so the card's idea of "how many rows exist" and the Live Activity
+    /// pointer's can't drift apart — they used to disagree the moment a row
+    /// existed in the store but wasn't completed (this used to float on
+    /// `completedSetCount` alone, which doesn't see that row at all).
     private var rowCount: Int {
-        max(workoutExercise.plannedSetCount ?? ghosts.count, completedSetCount, 1)
+        WorkoutEngine.rowCount(for: workoutExercise, ghostCount: ghosts.count)
     }
 
     private var supersetLabel: String? {
@@ -206,9 +216,14 @@ struct ExerciseCardView: View {
                     Label("Add Drop Set to Last Set", systemImage: "arrow.turn.down.right")
                 }
             }
-            if let lastRow = topLevelSets.last {
+            // Build 5 item C: available whenever a row exists to remove, not
+            // only when the last row happens to have a logged `SetLog` — the
+            // last row is frequently still a ghost, and this menu entry is
+            // the documented failsafe for swiping it away, so it can't be
+            // narrower than the swipe action it's backing up.
+            if rowCount > 1 {
                 Button(role: .destructive) {
-                    deleteExisting(index: lastRow.orderIndex)
+                    deleteRow(index: rowCount - 1)
                 } label: {
                     Label("Delete Last Set", systemImage: "minus.circle")
                 }
@@ -239,7 +254,12 @@ struct ExerciseCardView: View {
         VStack(spacing: 0) {
             ForEach(0..<rowCount, id: \.self) { index in
                 // Only a *completed* row is passed as `existingSet` — an
-                // un-ticked one reverts to its ghost, per §7.2/§7.3.
+                // un-ticked one reverts to its ghost, per §7.2/§7.3. This is
+                // deliberate and stays: it's what makes an un-ticked row show
+                // its ghost/edit state instead of stale committed values.
+                // `onDeleteRow` below is unconditional, though — Build 5 item
+                // C is precisely that Delete must not ride along with that
+                // same completed-only gate.
                 let topSet = setLog(at: index).flatMap { $0.isCompleted ? $0 : nil }
                 let rowGhost = ghostForRow(at: index)
                 VStack(spacing: 0) {
@@ -249,7 +269,7 @@ struct ExerciseCardView: View {
                         ghost: rowGhost,
                         onComplete: { weight, reps in complete(index: index, weight: weight, reps: reps) },
                         onUncomplete: { uncomplete(index: index) },
-                        onDeleteExisting: { deleteExisting(index: index) },
+                        onDeleteRow: { deleteRow(index: index) },
                         onAddDrop: topSet.map { parent in { addDrop(from: parent) } },
                         onDuplicate: { weightKg, reps in
                             appendSet(seededWith: GhostSet(weightKg: weightKg, reps: reps))
@@ -352,7 +372,14 @@ struct ExerciseCardView: View {
     private func appendSet(seededWith seed: GhostSet?) {
         let newIndex = rowCount
         workoutExercise.plannedSetCount = newIndex + 1
-        if let seed { addedRowSeed[newIndex] = seed }
+        // §7.3: `+ Add Set` "appends a row pre-filled from the last completed
+        // set of that exercise in this session — not the historical ghost."
+        // Seeding explicitly here rather than relying on `ghostForRow`'s
+        // "past the ghost list" fallback matters when the routine template
+        // still has a ghost at this index: the template's 0 kg × 10 used to
+        // win over the 60 kg × 10 you just did, which is the wrong way round.
+        let sessionSeed = seed ?? lastEnteredValues.map { GhostSet(weightKg: $0.weightKg, reps: $0.reps) }
+        if let sessionSeed { addedRowSeed[newIndex] = sessionSeed }
         Haptics.play(.setAdded)
         onPlanChanged()
     }
@@ -376,7 +403,7 @@ struct ExerciseCardView: View {
                 isDrop: true,
                 onComplete: { weight, reps in completeDrop(drop, weight: weight, reps: reps) },
                 onUncomplete: { uncompleteDrop(drop) },
-                onDeleteExisting: { deleteDrop(drop) },
+                onDeleteRow: { deleteDrop(drop) },
                 onAddDrop: drop.isCompleted ? { addDrop(from: drop) } : nil,
                 // Duplicating a drop has no meaning — a chain is extended
                 // with `+ Drop`, never copied.
@@ -521,21 +548,57 @@ struct ExerciseCardView: View {
         onSetUncompleted(workoutExercise, setLog)
     }
 
-    private func deleteExisting(index: Int) {
-        guard let setLog = self.setLog(at: index) else { return }
-        // §7.9: a parent's drops are part of its row, not independent —
-        // deleting the parent takes the whole chain with it rather than
-        // leaving drops pointing at a `parentSetID` that no longer exists.
-        for drop in (workoutExercise.sets ?? []).filter({ $0.parentSetID == setLog.id }) {
-            modelContext.delete(drop)
+    /// Build 5 item C: replaces `deleteExisting`, which only ever handled a
+    /// row that had already become a `SetLog` — the caller now offers Delete
+    /// on every top-level row, ghost included, so this has to cover "there's
+    /// nothing to delete from the store, only the plan" too.
+    private func deleteRow(index: Int) {
+        // A card can't go to zero rows; the floor `rowCount` itself enforces
+        // (`max(…, 1)`) means there's always at least one row to fall back
+        // to, so the last one simply refuses to delete rather than leaving
+        // nothing on screen.
+        guard rowCount > 1 else { return }
+        // Captured before any mutation below — `rowCount` reads live off the
+        // store, so computing it after deleting would already be looking at
+        // the new state. The completed floor must *exclude* the row being
+        // deleted if that row is itself completed: flooring at the pre-delete
+        // completed count would keep the plan one row too tall and the
+        // deleted row would come straight back as a ghost.
+        let deletingCompleted = self.setLog(at: index)?.isCompleted == true
+        let completedAfter = completedSetCount - (deletingCompleted ? 1 : 0)
+        let newCount = max(rowCount - 1, completedAfter, 1)
+        if let setLog = self.setLog(at: index) {
+            // §7.9: a parent's drops are part of its row, not independent —
+            // deleting the parent takes the whole chain with it rather than
+            // leaving drops pointing at a `parentSetID` that no longer exists.
+            for drop in (workoutExercise.sets ?? []).filter({ $0.parentSetID == setLog.id }) {
+                modelContext.delete(drop)
+            }
+            modelContext.delete(setLog)
         }
-        modelContext.delete(setLog)
         // Renumber every remaining top-level row, completed or not — an
         // un-ticked row still occupies its slot, so skipping it here would
         // leave a gap that `setLog(at:)` could never match again.
         for (i, log) in topLevelSets.enumerated() where log.orderIndex != i {
             log.orderIndex = i
         }
+        // The latent bug this closes (build 5 item C): `deleteExisting`
+        // never wrote the plan back, so with `plannedSetCount` left `nil`,
+        // `rowCount` falls back to `ghosts.count` — which never shrank — and
+        // the row just deleted reappeared as a ghost on the very next
+        // redraw. Writing the new count here is what actually removes it.
+        workoutExercise.plannedSetCount = newCount
+        // Every seed keyed above the deleted row shifts down one slot so it
+        // still lands on the row it was meant for once renumbering closes
+        // the gap; the seed that belonged to the deleted row itself (if any)
+        // has nowhere left to go and is simply dropped.
+        addedRowSeed = Dictionary(
+            uniqueKeysWithValues: addedRowSeed.compactMap { entry -> (Int, GhostSet)? in
+                guard entry.key != index else { return nil }
+                return (entry.key > index ? entry.key - 1 : entry.key, entry.value)
+            }
+        )
+        Haptics.play(.setDeleted)
         onPlanChanged()
     }
 }

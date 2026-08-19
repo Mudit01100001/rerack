@@ -4,6 +4,41 @@ Running record of what shipped, what's blocked, and what the next session should
 
 ---
 
+## Session 5 — 2026-08-19
+
+### Build 5: everything from the first device test of build 4
+
+Plan and rationale: [`PLAN-build5.md`](PLAN-build5.md). Research by three haiku agents (iOS 26 swipe visuals, Core Haptics depth, sheet-vs-cover), root-cause analysis by one opus agent, code by five sonnet agents on disjoint file sets, integrated and verified here. **All sixteen changed files compiled on the first integrated build.**
+
+| Item | State | Evidence |
+|---|---|---|
+| A. Sheet presentation; custom drag deleted | ✅ verified | mid-list drag scrolls, sheet stays; drag from top dismisses |
+| A. One swipe recognizer, not one per row | ✅ verified | swipe from a text field still works; scroll is smooth |
+| B. Mail-style swipe circles | ✅ verified | 44pt circle, label beneath, row keeps rounded body |
+| C. Delete any row, incl. empty ones | ✅ verified | empty row deleted, did not reappear |
+| D. Superset gate: live plan + gap-tolerant + rest window + toggle | ✅ built | toggle migrated into the store as `1` |
+| E. Live Activity loop | ✅ **verified end to end** | see below |
+| F. One grabbable rest bar | ✅ verified | drag to 1:02, thumb followed |
+| G. Keyboard Done | ✅ verified | toolbar appears above number pad |
+| H. Onboarding: auto-cap, Back, card, illustrations | ✅ verified | screenshots |
+| I. Haptics rebuilt + Haptics Lab | ✅ built | Lab renders in Profile → Developer |
+| — Add Set inherits this session's last entry even when a template ghost exists | ✅ fixed | found during verification |
+| — Open swipe row closes when a scroll begins | ✅ added | Mail behaviour |
+
+**The Live Activity loop, reproduced and closed.** Incline: rows 1 and 3 ticked in-app, row 2 left empty — the exact shape reported. Store showed `idx 0 done, idx 2 done, no idx 1`. Lock Screen read **"Set 2 of 3"** (the old engine said "Set 3 of 3", the row already done). One tick from the Lock Screen: store now `0 app / 1 live_activity / 2 app` — the gap filled, rows 0 and 2 untouched, activity advanced to Machine Shoulder Press. Root cause was `pointer(for:)` using the completed *count* as the row *index*; `LogSetIntent` also now refuses to rewrite a completed row regardless of pointer state.
+
+**Two of my own defects found in this pass, both from build 4:**
+- `SwipeActionRow` installed a `UIPanGestureRecognizer` on the shared scroll view **per row, never removed** — ~24 recognizers on one scroll view in a 6-exercise session, accumulating as rows recycled. That was the "scrolling messed up".
+- The illustrations on the new gestures page overflowed the screen until clipped; caught by looking.
+
+**Also verified from build 4's list, now that a Live Activity was on screen:** translucent black ground (item 6), no "next set" line, and the rest bar drains — 2:23 of 3:00 showed ~79% filled.
+
+**Not verifiable on a simulator, needs the phone:** how the haptics feel (the Lab exists for exactly this), and real-device scroll feel now the recognizers are gone.
+
+**One spec question surfaced, not changed:** ghost priority 1 uses the *last completed workout's* set count, so a session where you did 1 of 4 planned bench sets makes next session open with 1 row. That's §7.3 as written; whether an under-completed session should shrink the plan is a product call.
+
+---
+
 ## Session 4 — 2026-08-18
 
 ### The drop-set bug is fixed, and the fix is verified end to end

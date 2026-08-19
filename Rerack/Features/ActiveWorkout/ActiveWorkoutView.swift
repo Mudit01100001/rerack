@@ -1,13 +1,4 @@
 import SwiftUI
-
-/// Reports the scroll container's offset so the dismiss gesture can tell a
-/// scroll from a dismiss.
-private struct ScrollOffsetKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
 import SwiftData
 import AudioToolbox
 import WidgetKit
@@ -41,15 +32,9 @@ struct ActiveWorkoutView: View {
     @State private var pendingRestContent: RestNotificationScheduler.Content?
 
     @State private var restCompleteBanner: RestNotificationScheduler.Content?
-    /// Drives the dismiss gate above. Anything within a few points of the top
-    /// counts as "at the top" — demanding exactly zero makes the gesture feel
-    /// broken after a rubber-band bounce.
-    @State private var isScrolledToTop = true
     /// Item 11: set when the session's exercise list no longer matches the
     /// template it started from, so the user gets to say what that means.
     @State private var showingDivergencePrompt = false
-    /// Only a drag beginning in the upper third of the screen can dismiss.
-    private var dismissZoneHeight: CGFloat { UIScreen.main.bounds.height / 3 }
     @State private var bannerDismissTask: Task<Void, Never>?
     @State private var isShowingNotificationPrimer = false
 
@@ -114,16 +99,6 @@ struct ActiveWorkoutView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    GeometryReader { proxy in
-                        Color.clear.preference(
-                            key: ScrollOffsetKey.self,
-                            value: proxy.frame(in: .named("workoutScroll")).minY
-                        )
-                    }
-                    .frame(height: 0)
-
-                    grabPill
-
                     statsHeader
 
                     if let restingExercise,
@@ -177,33 +152,24 @@ struct ActiveWorkoutView: View {
             // collapse chevron, which also parked the workout. Swiping the
             // list now dismisses it, which is what every other iOS list does.
             .scrollDismissesKeyboard(.interactively)
-            .coordinateSpace(name: "workoutScroll")
-            .onPreferenceChange(ScrollOffsetKey.self) { offset in
-                isScrolledToTop = offset > -8
-            }
             .background(Color(.systemGroupedBackground))
-            // Swipe down to park the session — but **only from the top of
-            // the list**. This gesture used to be unconditional, so a normal
-            // downward scroll from anywhere in a long workout threw the whole
-            // session off screen. A scroll and a dismiss are the same finger
-            // movement; the only thing that separates them is whether there
-            // is anything left to scroll.
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 40)
-                    .onEnded { value in
-                        // Two gates, both required. At the top of the list a
-                        // downward drag has nowhere to scroll, so it can only
-                        // mean dismiss — but only if it *started* up top too.
-                        // A drag begun low on the screen is someone reaching
-                        // for a set row, and throwing the session away on that
-                        // is what made the gesture feel hostile.
-                        guard isScrolledToTop else { return }
-                        guard value.startLocation.y < dismissZoneHeight else { return }
-                        let isDownward = value.translation.height > 90
-                        let isMostlyVertical = abs(value.translation.height) > abs(value.translation.width) * 2
-                        if isDownward, isMostlyVertical { onMinimize() }
-                    }
-            )
+            // Build 5 item G: a number pad has no Return key, so without this
+            // there was no way to close the keyboard short of scrolling it
+            // away or tapping the chevron. `resignFirstResponder` rather than
+            // a stored `@FocusState` because the field that's focused could
+            // be any set row's weight or reps box, and this dismisses
+            // whichever one it is without the row needing to expose its own
+            // focus binding up to this view. Known iOS 17 quirk: a keyboard
+            // toolbar can fail to appear the *first* time a field inside a
+            // `fullScreenCover` gets focus and only show up on the second —
+            // moving this screen to a `.sheet` (item A) sidesteps it, since
+            // the bug is specific to the cover presentation style.
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { dismissKeyboard() }
+                }
+            }
             .navigationTitle(workout.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -639,29 +605,15 @@ struct ActiveWorkoutView: View {
         }
     }
 
-    /// A visible handle for the dismiss gesture. The gesture existed before
-    /// this and was invisible, so the only *discoverable* way out was the
-    /// chevron in the toolbar — and the invisible gesture fired constantly by
-    /// accident. Making it a control fixes both halves.
-    private var grabPill: some View {
-        Capsule()
-            .fill(Color.secondary.opacity(0.35))
-            .frame(width: 40, height: 5)
-            .frame(maxWidth: .infinity)
-            .padding(.top, DS.Space.xxs)
-            .padding(.bottom, DS.Space.xxs)
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 12)
-                    .onEnded { value in
-                        if value.translation.height > 40 { onMinimize() }
-                    }
-            )
-            .onTapGesture { onMinimize() }
-            .accessibilityElement()
-            .accessibilityLabel("Minimise workout")
-            .accessibilityHint("Drag down or double tap to park this session")
-            .accessibilityAddTraits(.isButton)
+    /// Build 5 item G: resigns whichever field is focused, rather than
+    /// clearing a stored `@FocusState`. A `TextField` inside any set row on
+    /// any exercise card could be the one holding the keyboard up, and
+    /// routing that focus state up through every card and row just to give
+    /// this one toolbar button something to clear would be a lot of plumbing
+    /// for a button that only ever needs to say "whoever you are, give up
+    /// first responder."
+    private func dismissKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 
     // MARK: - Rest notification scheduling (§7.5)
@@ -738,6 +690,14 @@ struct ActiveWorkoutView: View {
     /// Pre-planned and explicitly-grouped pairs are never re-evaluated here —
     /// this only ever looks at pairs that are currently ungrouped.
     private func recordForDetection(_ workoutExercise: WorkoutExercise) {
+        // Build 5 item D (iii): the whole feature is a soft nudge — PRD
+        // §7.8.1 — and one report called it outright annoying, so it ships
+        // with an off switch. Gating the entire function, not just the
+        // alert, means flipping it off mid-workout also stops history from
+        // accumulating: a pair that was pending when the toggle flipped
+        // can't resurface if it's flipped back on later in the same session.
+        guard currentProfile()?.supersetSuggestionsEnabled ?? true else { return }
+
         recentHistory.append(workoutExercise.id)
         if recentHistory.count > 6 { recentHistory.removeFirst() }
 
@@ -749,6 +709,13 @@ struct ActiveWorkoutView: View {
         let key = PairKey(workoutExercise.id, previous.id)
         guard !declinedPairs.contains(key) else { return }
         guard hasIncompleteExpectedSets(previous) else { return }
+        // Build 5 item D (ii): a superset has *no rest* between A and B by
+        // definition — so alternating exercises only looks like a candidate
+        // if the previous one's last tick is still within its own rest
+        // window. Once a full rest has passed, a trailing un-ticked row on
+        // the exercise you left isn't evidence of a superset, it's evidence
+        // you moved on for the day.
+        guard isWithinRestWindow(of: previous) else { return }
 
         if pendingPairs.contains(key) {
             SupersetGrouping.group(workoutExercise, with: previous, among: sortedExercises)
@@ -768,19 +735,42 @@ struct ActiveWorkoutView: View {
         isShowingSupersetPrompt = true
     }
 
-    /// "Left mid-way" needs a known expected count to compare against —
-    /// from history or a routine target. With neither (a brand-new exercise
-    /// in an empty workout), there's nothing to judge "incomplete" against,
-    /// so detection deliberately stays quiet rather than guessing.
+    /// Build 5 item D (i): "left mid-way" used to compare a *count* of
+    /// completed sets against history-only `expected`, so trimming a plan
+    /// below what history remembered nagged forever, and an out-of-order tick
+    /// (row 0 and row 2 done, row 1 open) read as "2 of 3 done" — true for
+    /// the rest of the session even after row 1 was filled in. `planned` now
+    /// comes from the same "how many rows does this card have" arithmetic
+    /// the pointer and the card itself use (`WorkoutEngine.rowCount`,
+    /// extracted for item E so the two can't diverge), and progress is read
+    /// off the highest completed row's *position*, not a count — so ticking
+    /// the actual last row always ends detection, regardless of what order
+    /// the rows were filled in.
     private func hasIncompleteExpectedSets(_ workoutExercise: WorkoutExercise) -> Bool {
-        let expected = ghosts(for: workoutExercise).count
-        guard expected > 0 else { return false }
-        // Top-level sets only (§7.9). Drops are continuations of a set, not
-        // sets of their own — counting them here would make a drop chain look
-        // like progress against the expected count and wrongly suppress the
-        // superset prompt. Same reasoning as `WorkoutEngine.completedCount`.
-        let completed = WorkoutEngine.completedCount(workoutExercise)
-        return completed > 0 && completed < expected
+        let planned = WorkoutEngine.rowCount(for: workoutExercise, ghostCount: ghosts(for: workoutExercise).count)
+        // Top-level sets only (§7.9) — a drop chain is a continuation of a
+        // set, not a row of its own.
+        let topLevelSets = (workoutExercise.sets ?? []).filter { $0.parentSetID == nil }
+        let completed = topLevelSets.filter(\.isCompleted)
+        guard let highest = completed.map(\.orderIndex).max() else { return false }
+        return highest + 1 < planned
+    }
+
+    /// Build 5 item D (ii)'s timing gate. `restDuration(for:)` is the same
+    /// override → exercise-default → profile-default chain the rest timer
+    /// itself resolves against (§7.5), so this reads the identical number
+    /// the user would have seen counting down — it always resolves to a
+    /// positive value rather than failing, so the 90s floor only matters if
+    /// that chain is ever loosened to return something falsy.
+    private func isWithinRestWindow(of workoutExercise: WorkoutExercise) -> Bool {
+        let lastCompletedAt = (workoutExercise.sets ?? [])
+            .filter { $0.parentSetID == nil && $0.isCompleted }
+            .compactMap(\.completedAt)
+            .max()
+        guard let lastCompletedAt else { return false }
+        let resolvedRestSeconds = restDuration(for: workoutExercise)
+        let restWindow = TimeInterval(resolvedRestSeconds > 0 ? resolvedRestSeconds : 90)
+        return Date().timeIntervalSince(lastCompletedAt) <= restWindow
     }
 
     private func confirmSupersetPrompt() {

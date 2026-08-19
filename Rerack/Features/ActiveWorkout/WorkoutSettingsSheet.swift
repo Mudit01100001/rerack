@@ -59,6 +59,13 @@ struct WorkoutSettingsSheet: View {
                             get: { profile.restTimerSoundEnabled },
                             set: { profile.restTimerSoundEnabled = $0 }
                         ))
+                        // Build 5 item D: the mid-workout "Superset?" nudge
+                        // gets its own off switch, since it's a heuristic
+                        // guess rather than something the user asked for.
+                        Toggle("Suggest supersets", isOn: Binding(
+                            get: { profile.supersetSuggestionsEnabled },
+                            set: { profile.supersetSuggestionsEnabled = $0 }
+                        ))
                     }
 
                     Section {

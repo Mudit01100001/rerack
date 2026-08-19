@@ -17,7 +17,14 @@ struct SetRowView: View {
     var dropPrefillWeightKg: Double? = nil
     let onComplete: (_ weightKg: Double, _ reps: Int) -> Void
     let onUncomplete: () -> Void
-    let onDeleteExisting: () -> Void
+    /// Build 5 item C: renamed from `onDeleteExisting` now that Delete is
+    /// offered on every top-level row, not just a completed one — the old
+    /// name implied a row had to already exist as a logged `SetLog` to be
+    /// deletable, which is exactly the gate that made an un-ticked row
+    /// un-swipeable in the first place. The closure itself is unconditional
+    /// here; whether deleting is *possible* is the caller's call (for a
+    /// drop row it always is — see `dropChainRows` in `ExerciseCardView`).
+    let onDeleteRow: () -> Void
     /// nil hides the "+ Drop" swipe action — callers only pass a closure for
     /// a completed row (PRD §15: blocked on an incomplete parent).
     var onAddDrop: (() -> Void)? = nil
@@ -190,13 +197,17 @@ struct SetRowView: View {
                 }
             )
         }
-        if existingSet != nil {
-            actions.append(
-                SwipeAction(label: "Delete", systemImage: "trash", tint: .red, isDestructive: true) {
-                    onDeleteExisting()
-                }
-            )
-        }
+        // Build 5 item C: Delete is unconditional now, not gated on
+        // `existingSet != nil`. A row that never became a `SetLog` — an
+        // un-ticked ghost, or an existing-but-un-ticked row the caller
+        // withholds `existingSet` for (see `ExerciseCardView.setList`) — is
+        // still a slot on screen the user planned and wants gone; the old
+        // gate is exactly why those rows had no swipe action at all.
+        actions.append(
+            SwipeAction(label: "Delete", systemImage: "trash", tint: .red, isDestructive: true) {
+                onDeleteRow()
+            }
+        )
         return actions
     }
 

@@ -64,7 +64,20 @@ struct RootTabView: View {
             OnboardingView { showingOnboarding = false }
         }
         .task { decideOnboarding() }
-        .fullScreenCover(
+        // Build 5 item A: this was a `fullScreenCover` with a hand-rolled
+        // drag-to-dismiss gesture layered on top of the scroll view, and
+        // three separate attempts at gating that gesture (top-of-scroll
+        // only, start-zone only, translation thresholds) still let a normal
+        // downward scroll get read as a dismiss on device. A system `.sheet`
+        // arbitrates scroll-vs-dismiss itself — it already knows the
+        // difference between "the content underneath has room to scroll" and
+        // "this drag means close" — so `ActiveWorkoutView` sheds its custom
+        // gesture entirely and this is the one place that behaviour lives
+        // now. `interactiveDismissDisabled(false)` keeps drag-to-dismiss on;
+        // dismissing that way runs the binding's `set` below, which is
+        // exactly what `onMinimize` does — the workout stays live and the
+        // banner returns, nothing extra to wire up.
+        .sheet(
             isPresented: Binding(
                 get: { coordinator.isPresented },
                 set: { coordinator.isPresented = $0 }
@@ -78,16 +91,19 @@ struct RootTabView: View {
                         modelContext.delete(workout)
                         coordinator.clear()
                     },
-                    // Only dismisses the cover. The workout stays live and
+                    // Only dismisses the sheet. The workout stays live and
                     // the banner reappears, so nothing is lost.
                     onMinimize: { coordinator.isPresented = false }
                 )
-                // Re-injected rather than inherited. A presented cover does
+                // Re-injected rather than inherited. A presented sheet does
                 // not reliably carry custom environment keys across the
                 // presentation boundary, so the tick stayed right-handed on
                 // the one screen the setting exists for.
                 .environment(\.dominantHand, dominantHand)
                 .environment(\.unitPreference, unitPreference)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+                .interactiveDismissDisabled(false)
             }
         }
         .task {
