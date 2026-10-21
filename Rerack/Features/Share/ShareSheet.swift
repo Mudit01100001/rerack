@@ -9,6 +9,11 @@ import Photos
 /// to Done as an equal choice, so the common path was leaving without ever
 /// seeing your own numbers. Now saving lands you here and sharing is a
 /// decision you make from a screen that's already showing you the session.
+///
+/// This is also the only screen in the finish flow that shows a "Good job!"
+/// — `WorkoutSummaryView`, one step back, is still a form you can back out
+/// of (`ActiveWorkoutView.commitFinish()` hasn't run yet there), so the
+/// celebration waits until the workout is actually, irreversibly saved.
 struct WorkoutCompleteView: View {
     let workout: Workout
     /// Dismisses the whole finish flow, not just this screen.
@@ -28,6 +33,15 @@ struct WorkoutCompleteView: View {
         ShareCardContentBuilder.build(for: workout, context: modelContext, unit: unit)
     }
 
+    private var greeting: String {
+        let name = currentProfile()?.displayName ?? ""
+        return name.isEmpty ? "🎉 Good job!" : "🎉 Good job, \(name)!"
+    }
+
+    private func currentProfile() -> UserProfile? {
+        (try? modelContext.fetch(FetchDescriptor<UserProfile>()))?.first
+    }
+
     var body: some View {
         // Confetti sits outside the NavigationStack so the list/scroll
         // clipping can't swallow it, which is what happened the first time.
@@ -38,15 +52,18 @@ struct WorkoutCompleteView: View {
         }
         .task {
             showingConfetti = true
-            // Matched to the fall rather than fired as one thump at the top —
-            // the pattern decays over ~0.9s alongside the pieces.
-            Haptics.play(.celebration)
+            // A PR gets the special three-tap-and-a-swell pattern — it's the
+            // one haptic in the app allowed to take its time. Everything
+            // else just gets the regular celebration thump.
+            Haptics.play(content.prCount > 0 ? .personalRecord : .celebration)
         }
     }
 
     private var navigationBody: some View {
         NavigationStack {
             VStack(spacing: DS.Space.sm) {
+                Text(greeting)
+                    .dsFont(DS.TypeScale.heading, relativeTo: .title3, weight: .bold)
                 summaryStrip
                 // The card lays out at a fixed point size so `ImageRenderer`
                 // gets identical geometry to what's previewed. Scaling to fit

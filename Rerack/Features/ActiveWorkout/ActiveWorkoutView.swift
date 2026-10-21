@@ -200,10 +200,15 @@ struct ActiveWorkoutView: View {
                 ExerciseDetailView(exercise: exercise)
             }
             .fullScreenCover(isPresented: $showingSummary) {
-                WorkoutSummaryView(workout: workout) {
-                    showingSummary = false
-                    onFinish()
-                }
+                WorkoutSummaryView(
+                    workout: workout,
+                    onBack: { showingSummary = false },
+                    onSave: commitFinish,
+                    onDone: {
+                        showingSummary = false
+                        onFinish()
+                    }
+                )
             }
             // `.alert`, not `.confirmationDialog`. A confirmation dialog
             // anchors itself to the control that opened it and renders with a
@@ -219,10 +224,10 @@ struct ActiveWorkoutView: View {
             .alert("This session doesn't match the plan", isPresented: $showingDivergencePrompt) {
                 Button("Save as New Workout") {
                     saveAsNewWorkout()
-                    finish()
+                    showingSummary = true
                 }
                 Button("Keep the Old Workout") {
-                    finish()
+                    showingSummary = true
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
@@ -820,13 +825,23 @@ struct ActiveWorkoutView: View {
 
     /// PRD §9.4 discard-empty guard: finishing with zero completed sets
     /// offers to discard rather than saving an empty `Workout` row.
+    ///
+    /// "Finish" no longer *commits* anything by itself — it only opens the
+    /// review screen (§9.4's optional photo/gym/tags/notes step). Nothing
+    /// about the workout is touched here: rest keeps ticking, the Live
+    /// Activity stays up, `endedAt` stays nil. That's deliberate — tapping
+    /// Finish used to be a one-way door with no way back to the workout
+    /// short of filling in the review screen and saving anyway. Now the
+    /// review screen has a real Back button (`WorkoutSummaryView.onBack`)
+    /// that returns here having changed nothing, and the actual commit
+    /// (`commitFinish`, below) only runs once the user taps "Save Workout."
     private func attemptFinish() {
         if totalSets == 0 {
             showingEmptyFinishConfirm = true
         } else if hasDivergedFromTemplate {
             showingDivergencePrompt = true
         } else {
-            finish()
+            showingSummary = true
         }
     }
 
@@ -894,7 +909,11 @@ struct ActiveWorkoutView: View {
         try? modelContext.save()
     }
 
-    private func finish() {
+    /// The actual "this workout is over" commit — deferred from the Finish
+    /// tap (see `attemptFinish`) to the review screen's "Save Workout"
+    /// button, so everything here only ever runs once the user has
+    /// definitely decided to stop, not merely glanced at the review screen.
+    private func commitFinish() {
         // A pending rest notification would otherwise fire for a workout
         // that's already over, pointing at a "next set" nobody's doing.
         clearRest()
@@ -908,10 +927,12 @@ struct ActiveWorkoutView: View {
         recalculateCachedStats()
         // PRD §13.4: PR detection runs once, here, so Best Session Volume
         // sees the whole session. §9.3: the routine baseline updates from
-        // the same completed data. Both run before the summary screen shows
-        // so its 🏆 flags and "N new records" line (§9.4) are already
-        // correct — the summary's own "Done" only persists the optional
-        // photo/gym/tags/notes fields added on that screen, not these numbers.
+        // the same completed data. Both run on save, not on the earlier
+        // Finish tap — running them while the review screen was still just
+        // a proposal (and reachable by Back) would let a round trip through
+        // "Finish → Back → log more sets → Finish again" detect and write
+        // the same PR twice. The celebration screen that follows reads
+        // these numbers fresh, once they're final.
         PersonalRecordDetector.detect(workout: workout, context: modelContext)
         updateRoutineBaseline()
         try? modelContext.save()
@@ -920,7 +941,6 @@ struct ActiveWorkoutView: View {
         // that's slow, unauthorized, or failing must never delay the summary
         // screen or surface an error (§9.7 silent fallback).
         Task { await HealthKitManager.writeWorkout(workout) }
-        showingSummary = true
     }
 
     /// PRD §9.3 "baseline loop," step 4: when `updateValuesOnFinish` is on,

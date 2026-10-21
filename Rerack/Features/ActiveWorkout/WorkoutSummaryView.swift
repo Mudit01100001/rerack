@@ -2,14 +2,23 @@ import SwiftUI
 import SwiftData
 import PhotosUI
 
-/// PRD §9.4. Presented after `Finish`, before the workout is dismissed back
-/// to the tab bar. By the time this appears, `ActiveWorkoutView.finish()` has
-/// already set `endedAt`, run `PersonalRecordDetector`, and updated the
-/// routine baseline (§13.4, §9.3) — so this screen's 🏆 flags and record
-/// count are already correct, and `Done` only needs to persist the optional
-/// context (photo/gym/tags/notes) added here.
+/// PRD §9.4. Presented after `Finish`, *before* the workout actually ends —
+/// this is the review step, not the commit. `Finish` only opens this screen
+/// (`ActiveWorkoutView.attemptFinish`); nothing about the workout changes
+/// until `Save Workout` below calls `onSave`, which runs
+/// `ActiveWorkoutView.commitFinish()` (sets `endedAt`, runs
+/// `PersonalRecordDetector`, updates the routine baseline, writes to
+/// Health). That's why PR flags and a "new records" count don't appear on
+/// this screen — they aren't known yet — and why `Back` is safe: it can
+/// dismiss straight back to the live workout having committed nothing.
 struct WorkoutSummaryView: View {
     @Bindable var workout: Workout
+    /// Dismisses back to the still-live workout. Nothing has been saved yet
+    /// at this point, so this is a true no-op on the model.
+    let onBack: () -> Void
+    /// Runs the actual finish — `endedAt`, PR detection, routine baseline,
+    /// Health write — synchronously, before the share screen appears.
+    let onSave: () -> Void
     let onDone: () -> Void
 
     @Environment(\.modelContext) private var modelContext
@@ -20,20 +29,9 @@ struct WorkoutSummaryView: View {
     @State private var newTagText = ""
     @State private var showingShareCards = false
     @State private var showingConfetti = false
-    /// A PR should be felt once, when the screen appears — not on every
-    /// re-render of the summary.
-    @State private var hasPlayedRecordHaptic = false
 
     private var sortedExercises: [WorkoutExercise] {
         (workout.exercises ?? []).sorted { $0.orderIndex < $1.orderIndex }
-    }
-
-    /// Looked up rather than recomputed — `PersonalRecordDetector` has
-    /// already run and written these rows by the time this screen appears.
-    private var newRecordCount: Int {
-        let workoutID = workout.id
-        let descriptor = FetchDescriptor<PersonalRecord>(predicate: #Predicate { $0.sourceWorkoutID == workoutID })
-        return (try? modelContext.fetch(descriptor))?.count ?? 0
     }
 
     private var locationBinding: Binding<String> {
@@ -119,14 +117,6 @@ struct WorkoutSummaryView: View {
                         }
                         .font(.subheadline)
                     }
-                    if newRecordCount > 0 {
-                        Label(
-                            "\(newRecordCount) new record\(newRecordCount == 1 ? "" : "s") this session",
-                            systemImage: "trophy.fill"
-                        )
-                        .font(.subheadline.bold())
-                        .foregroundStyle(.orange)
-                    }
                 }
 
                 Section {
@@ -134,13 +124,15 @@ struct WorkoutSummaryView: View {
                         .listRowInsets(EdgeInsets(top: 6, leading: 8, bottom: 6, trailing: 8))
                 }
             }
+            .navigationTitle("Finish Workout")
             .navigationBarTitleDisplayMode(.inline)
-            .task {
-                // Three ascending taps and a swell. A PR interrupts nothing,
-                // so it is the one haptic in the app allowed to take its time.
-                guard !hasPlayedRecordHaptic, newRecordCount > 0 else { return }
-                hasPlayedRecordHaptic = true
-                Haptics.play(.personalRecord)
+            .toolbar {
+                // The whole point of this screen no longer committing
+                // anything: a real way back to the still-live workout,
+                // not just a form you're stuck filling in.
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Back", action: onBack)
+                }
             }
             .task(id: photoItem) {
                 guard let photoItem, let data = try? await photoItem.loadTransferable(type: Data.self) else { return }
@@ -168,21 +160,14 @@ struct WorkoutSummaryView: View {
 
     // MARK: - Header, photo, stats
 
-    private var greeting: String {
-        let name = currentProfile()?.displayName ?? ""
-        return name.isEmpty ? "🎉 Good job!" : "🎉 Good job, \(name)!"
-    }
-
-    private func currentProfile() -> UserProfile? {
-        (try? modelContext.fetch(FetchDescriptor<UserProfile>()))?.first
-    }
-
+    /// No "Good job!" here on purpose — that's the payoff for having saved,
+    /// and belongs on `WorkoutCompleteView`, which only ever appears once
+    /// `commitFinish()` has actually run. This is still a form you might
+    /// back out of.
     private var header: some View {
         VStack(spacing: 2) {
-            Text(greeting).font(.title3.bold())
             Text(workout.routineNameSnapshot ?? workout.title)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .font(.title3.bold())
         }
         .frame(maxWidth: .infinity)
         .listRowBackground(Color.clear)
@@ -233,8 +218,11 @@ struct WorkoutSummaryView: View {
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
-    /// PRD §18 Q7: pure wall-clock `endedAt − startedAt`, no exceptions —
-    /// `endedAt` is already set by the time this screen exists.
+    /// PRD §18 Q7: pure wall-clock `endedAt − startedAt`. `endedAt` isn't
+    /// set until `Save Workout` commits (see the type doc above), so while
+    /// this screen is up the duration keeps counting against `Date()` —
+    /// which is correct: the session genuinely hasn't ended yet, and `Back`
+    /// returns to a workout whose clock never stopped.
     private var formattedDuration: String {
         let interval = (workout.endedAt ?? Date()).timeIntervalSince(workout.startedAt)
         let total = max(0, Int(interval))
@@ -357,9 +345,12 @@ struct WorkoutSummaryView: View {
         }
     }
 
+    /// No 🏆 here — `PersonalRecordDetector` hasn't run yet at this point in
+    /// the flow, so `prFlags` is still whatever it was before this session
+    /// (i.e. empty). The trophies show up honestly once they're known, on
+    /// `WorkoutCompleteView` after `Save Workout`.
     private func exerciseRow(_ workoutExercise: WorkoutExercise, completed: [SetLog]) -> some View {
         let volume = completed.reduce(0) { $0 + $1.setVolumeKg }
-        let hasPR = completed.contains { !$0.prFlags.isEmpty }
         return HStack {
             HStack(spacing: 6) {
                 if let label = SupersetGrouping.label(for: workoutExercise, among: sortedExercises) {
@@ -375,9 +366,6 @@ struct WorkoutSummaryView: View {
             Spacer()
             Text("\(completed.count) sets · \(Weight.formatTotal(kg: volume, in: unit))")
                 .foregroundStyle(.secondary)
-            if hasPR {
-                Text("🏆")
-            }
         }
         .font(.subheadline)
     }
@@ -385,9 +373,13 @@ struct WorkoutSummaryView: View {
     /// One action. Sharing used to sit beside Done as an equal choice, which
     /// meant you could leave without ever seeing your own summary. Saving now
     /// leads into it, and sharing is a choice you make from there.
+    ///
+    /// `onSave` is what actually commits the workout (`ActiveWorkoutView.
+    /// commitFinish()`) — everything up to this tap has been reversible via
+    /// `Back`.
     private var actionButtons: some View {
         Button {
-            try? modelContext.save()
+            onSave()
             showingShareCards = true
         } label: {
             Text("Save Workout")
